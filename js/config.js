@@ -1,43 +1,52 @@
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.2';
+const VERSION = '0.3';
 
-// 配色主题（点子卡「清晨纸面」画风参数卡）。前两套免费，后三套在结算页看视频解锁。
+// 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
+// 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
+// texture 页面质地 · boardTexture 棋盘质地 · cardTexture 卡片质地 · pageDark / boardDark 底色深不深（决定颗粒用深色还是浅色）· hand 棋盘线像手画
 const THEMES = [
   {
-    id: 'morning', name: '清晨', free: true,
-    bg: '#F6F4EF', card: '#FFFFFF', board: '#FFFFFF', text: '#1F2A3A', sub: '#7B8494', faint: '#B4BAC4',
-    given: '#1F2A3A', user: '#2F6FDE', wrong: '#E5484D', note: '#6B7486',
-    sel: '#C9DCFB', rel: '#EAF1FD', same: '#D6E4FB', lineBold: '#3A4350', lineThin: '#D5D9E0',
-    primary: '#2F6FDE', primaryText: '#FFFFFF', soft: '#E8EFFC', glow: '#7FB0FF', gold: '#E9A93B', shadow: 'rgba(31,42,58,0.06)', ok: '#2FA36B',
+    id: 'paper', name: '晨光纸', free: true, texture: 'grain', boardTexture: 'grain', cardTexture: 'grain', hand: false,
+    bg: '#EFEBE2', card: '#FAF7F0', board: '#FAF7F0', text: '#2A2F38', sub: '#868B94', faint: '#BDB8AE',
+    given: '#2A2F38', user: '#2E64C8', wrong: '#D8473F', note: '#6E7380', lineBold: '#4A4F58', lineThin: '#DCD6CA',
+    primary: '#2E64C8', primaryText: '#FFFFFF', soft: '#E3E7EF', sel: '#C9D7F2', glow: '#7FA6EE', gold: '#D9A13A', shadow: 'rgba(60,50,30,0.08)', ok: '#3A9A66',
   },
   {
-    id: 'night', name: '夜间', free: true,
-    bg: '#15181D', card: '#1E2228', board: '#1E2228', text: '#E6E9EE', sub: '#8B93A1', faint: '#4A515C',
-    given: '#E6E9EE', user: '#6EA2FF', wrong: '#FF6B6E', note: '#A0A8B6',
-    sel: '#2C4570', rel: '#252C38', same: '#2E3A50', lineBold: '#9AA3B2', lineThin: '#343A44',
-    primary: '#4F86F0', primaryText: '#FFFFFF', soft: '#26324A', glow: '#6EA2FF', gold: '#F0B54A', shadow: 'rgba(0,0,0,0.25)', ok: '#3CC07E',
+    id: 'notebook', name: '手写本', free: true, texture: 'notebook', boardTexture: 'hand', cardTexture: 'hand', hand: true,
+    bg: '#F3EEDD', card: '#FBF7EA', board: '#FBF7EA', text: '#3A3530', sub: '#857C70', faint: '#C2B8A6',
+    given: '#3A3530', user: '#2647A8', wrong: '#C8372D', note: '#7A7368', lineBold: '#5A5249', lineThin: '#D6CCB8',
+    primary: '#2F55B8', primaryText: '#FFFFFF', soft: '#E6E5E6', sel: '#CDD3E6', glow: '#8AA4E8', gold: '#C9952E', shadow: 'rgba(70,55,30,0.08)', ok: '#3E8E5C',
   },
   {
-    id: 'mint', name: '薄荷', free: false,
-    bg: '#EEF5F1', card: '#FFFFFF', board: '#FFFFFF', text: '#1D3029', sub: '#6E8279', faint: '#AFC0B8',
-    given: '#1D3029', user: '#22856A', wrong: '#E0534F', note: '#5E7469',
-    sel: '#BFE6D6', rel: '#E6F4EE', same: '#CDEBDD', lineBold: '#36504A', lineThin: '#D3E0DA',
-    primary: '#2E9E7A', primaryText: '#FFFFFF', soft: '#DDF1E8', glow: '#6FD3AE', gold: '#E2A83C', shadow: 'rgba(29,48,41,0.06)', ok: '#2E9E7A',
+    id: 'chalk', name: '黑板', free: true, texture: 'chalk', boardTexture: 'chalk', cardTexture: 'chalk', hand: true, pageDark: true, boardDark: true,
+    bg: '#22302A', card: '#2B3A33', board: '#2B3A33', text: '#EEF0EA', sub: '#A3B0A8', faint: '#5A6B62',
+    given: '#F2F2EC', user: '#F3D46B', wrong: '#FF8F85', note: '#C3CEC7', lineBold: '#D7DED9', lineThin: '#4B5C54',
+    primary: '#F3D46B', primaryText: '#22302A', soft: '#384941', sel: '#4C5E55', glow: '#FFF0A8', gold: '#F3D46B', shadow: 'rgba(0,0,0,0.3)', ok: '#93DAA2',
   },
   {
-    id: 'apricot', name: '暖杏', free: false,
-    bg: '#FAF3EA', card: '#FFFFFF', board: '#FFFDFA', text: '#3A2B1E', sub: '#8C7A68', faint: '#C8B8A6',
-    given: '#3A2B1E', user: '#C06A1A', wrong: '#D9443F', note: '#7D6B58',
-    sel: '#F6D9B8', rel: '#FBEEDF', same: '#F4E0C8', lineBold: '#5A4634', lineThin: '#E6DACB',
-    primary: '#D9822B', primaryText: '#FFFFFF', soft: '#F8E6D2', glow: '#F2B270', gold: '#D9822B', shadow: 'rgba(58,43,30,0.06)', ok: '#3E9B62',
+    id: 'wood', name: '原木', free: false, texture: 'wood', boardTexture: 'woodLight', cardTexture: 'wood', hand: false, pageDark: true,
+    bg: '#5B3D26', card: '#6A4830', board: '#ECD6B0', text: '#F7EBD8', sub: '#D2B896', faint: '#8F6E50',
+    given: '#3A2512', user: '#1C6466', wrong: '#C8352A', note: '#6E5236', lineBold: '#5A3B20', lineThin: '#CFB38C',
+    primary: '#E3A75A', primaryText: '#3A2512', soft: '#7B573A', sel: '#8E6847', glow: '#FFD08A', gold: '#F2B84B', shadow: 'rgba(0,0,0,0.28)', ok: '#79C47F',
   },
   {
-    id: 'lilac', name: '雾紫', free: false,
-    bg: '#F3F1F8', card: '#FFFFFF', board: '#FFFFFF', text: '#2A2540', sub: '#7D7894', faint: '#BAB5CC',
-    given: '#2A2540', user: '#6A4CC6', wrong: '#E04F64', note: '#6F6987',
-    sel: '#DCD2F7', rel: '#EFEBFB', same: '#E3DBF8', lineBold: '#433C5E', lineThin: '#DDD9E8',
-    primary: '#7A5CD6', primaryText: '#FFFFFF', soft: '#E9E3FA', glow: '#A991F0', gold: '#E2A83C', shadow: 'rgba(42,37,64,0.06)', ok: '#3E9B70',
+    id: 'ink', name: '宣纸水墨', free: false, texture: 'rice', boardTexture: 'rice', cardTexture: 'rice', hand: true,
+    bg: '#E8DFCB', card: '#F4EDDC', board: '#F4EDDC', text: '#2A2622', sub: '#7E7466', faint: '#BFB39C',
+    given: '#1E1B18', user: '#2B4A6F', wrong: '#B8322A', note: '#6D6255', lineBold: '#2E2A26', lineThin: '#D2C6AD',
+    primary: '#9E2B25', primaryText: '#FBF4E6', soft: '#E9DCC8', sel: '#E2C9B5', glow: '#D9876F', gold: '#B8862E', shadow: 'rgba(60,40,20,0.09)', ok: '#4E8A5E',
+  },
+  {
+    id: 'kraft', name: '牛皮纸', free: false, texture: 'kraft', boardTexture: 'kraft', cardTexture: 'kraft', hand: false,
+    bg: '#C3A078', card: '#D6BA92', board: '#DCC39C', text: '#2E2116', sub: '#5C4733', faint: '#957657',
+    given: '#2E2116', user: '#1F3E73', wrong: '#A3241B', note: '#5B4632', lineBold: '#3E2C1C', lineThin: '#B79570',
+    primary: '#46301D', primaryText: '#F3E6D0', soft: '#CBAA80', sel: '#BB976B', glow: '#F5D9A8', gold: '#8A5A16', shadow: 'rgba(50,30,10,0.14)', ok: '#3F7A44',
+  },
+  {
+    id: 'metal', name: '拉丝金属', free: false, texture: 'metal', boardTexture: 'metal', cardTexture: 'metal', hand: false,
+    bg: '#C5CAD0', card: '#DADEE2', board: '#E3E6E9', text: '#1E2329', sub: '#58606B', faint: '#9AA1AA',
+    given: '#1E2329', user: '#1F5FBF', wrong: '#D23C3C', note: '#4F5761', lineBold: '#363D46', lineThin: '#B4BAC2',
+    primary: '#2B3440', primaryText: '#F2F4F6', soft: '#CCD1D7', sel: '#B9C0C8', glow: '#8FB8FF', gold: '#B8862A', shadow: 'rgba(20,25,30,0.16)', ok: '#3A8F5E',
   },
 ];
 

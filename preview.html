@@ -172,44 +172,53 @@ module.exports = { create, input, erase, undo, findHint, fillHint, revive, count
 __def("js/config.js", function (module, exports, require) {
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.2';
+const VERSION = '0.3';
 
-// 配色主题（点子卡「清晨纸面」画风参数卡）。前两套免费，后三套在结算页看视频解锁。
+// 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
+// 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
+// texture 页面质地 · boardTexture 棋盘质地 · cardTexture 卡片质地 · pageDark / boardDark 底色深不深（决定颗粒用深色还是浅色）· hand 棋盘线像手画
 const THEMES = [
   {
-    id: 'morning', name: '清晨', free: true,
-    bg: '#F6F4EF', card: '#FFFFFF', board: '#FFFFFF', text: '#1F2A3A', sub: '#7B8494', faint: '#B4BAC4',
-    given: '#1F2A3A', user: '#2F6FDE', wrong: '#E5484D', note: '#6B7486',
-    sel: '#C9DCFB', rel: '#EAF1FD', same: '#D6E4FB', lineBold: '#3A4350', lineThin: '#D5D9E0',
-    primary: '#2F6FDE', primaryText: '#FFFFFF', soft: '#E8EFFC', glow: '#7FB0FF', gold: '#E9A93B', shadow: 'rgba(31,42,58,0.06)', ok: '#2FA36B',
+    id: 'paper', name: '晨光纸', free: true, texture: 'grain', boardTexture: 'grain', cardTexture: 'grain', hand: false,
+    bg: '#EFEBE2', card: '#FAF7F0', board: '#FAF7F0', text: '#2A2F38', sub: '#868B94', faint: '#BDB8AE',
+    given: '#2A2F38', user: '#2E64C8', wrong: '#D8473F', note: '#6E7380', lineBold: '#4A4F58', lineThin: '#DCD6CA',
+    primary: '#2E64C8', primaryText: '#FFFFFF', soft: '#E3E7EF', sel: '#C9D7F2', glow: '#7FA6EE', gold: '#D9A13A', shadow: 'rgba(60,50,30,0.08)', ok: '#3A9A66',
   },
   {
-    id: 'night', name: '夜间', free: true,
-    bg: '#15181D', card: '#1E2228', board: '#1E2228', text: '#E6E9EE', sub: '#8B93A1', faint: '#4A515C',
-    given: '#E6E9EE', user: '#6EA2FF', wrong: '#FF6B6E', note: '#A0A8B6',
-    sel: '#2C4570', rel: '#252C38', same: '#2E3A50', lineBold: '#9AA3B2', lineThin: '#343A44',
-    primary: '#4F86F0', primaryText: '#FFFFFF', soft: '#26324A', glow: '#6EA2FF', gold: '#F0B54A', shadow: 'rgba(0,0,0,0.25)', ok: '#3CC07E',
+    id: 'notebook', name: '手写本', free: true, texture: 'notebook', boardTexture: 'hand', cardTexture: 'hand', hand: true,
+    bg: '#F3EEDD', card: '#FBF7EA', board: '#FBF7EA', text: '#3A3530', sub: '#857C70', faint: '#C2B8A6',
+    given: '#3A3530', user: '#2647A8', wrong: '#C8372D', note: '#7A7368', lineBold: '#5A5249', lineThin: '#D6CCB8',
+    primary: '#2F55B8', primaryText: '#FFFFFF', soft: '#E6E5E6', sel: '#CDD3E6', glow: '#8AA4E8', gold: '#C9952E', shadow: 'rgba(70,55,30,0.08)', ok: '#3E8E5C',
   },
   {
-    id: 'mint', name: '薄荷', free: false,
-    bg: '#EEF5F1', card: '#FFFFFF', board: '#FFFFFF', text: '#1D3029', sub: '#6E8279', faint: '#AFC0B8',
-    given: '#1D3029', user: '#22856A', wrong: '#E0534F', note: '#5E7469',
-    sel: '#BFE6D6', rel: '#E6F4EE', same: '#CDEBDD', lineBold: '#36504A', lineThin: '#D3E0DA',
-    primary: '#2E9E7A', primaryText: '#FFFFFF', soft: '#DDF1E8', glow: '#6FD3AE', gold: '#E2A83C', shadow: 'rgba(29,48,41,0.06)', ok: '#2E9E7A',
+    id: 'chalk', name: '黑板', free: true, texture: 'chalk', boardTexture: 'chalk', cardTexture: 'chalk', hand: true, pageDark: true, boardDark: true,
+    bg: '#22302A', card: '#2B3A33', board: '#2B3A33', text: '#EEF0EA', sub: '#A3B0A8', faint: '#5A6B62',
+    given: '#F2F2EC', user: '#F3D46B', wrong: '#FF8F85', note: '#C3CEC7', lineBold: '#D7DED9', lineThin: '#4B5C54',
+    primary: '#F3D46B', primaryText: '#22302A', soft: '#384941', sel: '#4C5E55', glow: '#FFF0A8', gold: '#F3D46B', shadow: 'rgba(0,0,0,0.3)', ok: '#93DAA2',
   },
   {
-    id: 'apricot', name: '暖杏', free: false,
-    bg: '#FAF3EA', card: '#FFFFFF', board: '#FFFDFA', text: '#3A2B1E', sub: '#8C7A68', faint: '#C8B8A6',
-    given: '#3A2B1E', user: '#C06A1A', wrong: '#D9443F', note: '#7D6B58',
-    sel: '#F6D9B8', rel: '#FBEEDF', same: '#F4E0C8', lineBold: '#5A4634', lineThin: '#E6DACB',
-    primary: '#D9822B', primaryText: '#FFFFFF', soft: '#F8E6D2', glow: '#F2B270', gold: '#D9822B', shadow: 'rgba(58,43,30,0.06)', ok: '#3E9B62',
+    id: 'wood', name: '原木', free: false, texture: 'wood', boardTexture: 'woodLight', cardTexture: 'wood', hand: false, pageDark: true,
+    bg: '#5B3D26', card: '#6A4830', board: '#ECD6B0', text: '#F7EBD8', sub: '#D2B896', faint: '#8F6E50',
+    given: '#3A2512', user: '#1C6466', wrong: '#C8352A', note: '#6E5236', lineBold: '#5A3B20', lineThin: '#CFB38C',
+    primary: '#E3A75A', primaryText: '#3A2512', soft: '#7B573A', sel: '#8E6847', glow: '#FFD08A', gold: '#F2B84B', shadow: 'rgba(0,0,0,0.28)', ok: '#79C47F',
   },
   {
-    id: 'lilac', name: '雾紫', free: false,
-    bg: '#F3F1F8', card: '#FFFFFF', board: '#FFFFFF', text: '#2A2540', sub: '#7D7894', faint: '#BAB5CC',
-    given: '#2A2540', user: '#6A4CC6', wrong: '#E04F64', note: '#6F6987',
-    sel: '#DCD2F7', rel: '#EFEBFB', same: '#E3DBF8', lineBold: '#433C5E', lineThin: '#DDD9E8',
-    primary: '#7A5CD6', primaryText: '#FFFFFF', soft: '#E9E3FA', glow: '#A991F0', gold: '#E2A83C', shadow: 'rgba(42,37,64,0.06)', ok: '#3E9B70',
+    id: 'ink', name: '宣纸水墨', free: false, texture: 'rice', boardTexture: 'rice', cardTexture: 'rice', hand: true,
+    bg: '#E8DFCB', card: '#F4EDDC', board: '#F4EDDC', text: '#2A2622', sub: '#7E7466', faint: '#BFB39C',
+    given: '#1E1B18', user: '#2B4A6F', wrong: '#B8322A', note: '#6D6255', lineBold: '#2E2A26', lineThin: '#D2C6AD',
+    primary: '#9E2B25', primaryText: '#FBF4E6', soft: '#E9DCC8', sel: '#E2C9B5', glow: '#D9876F', gold: '#B8862E', shadow: 'rgba(60,40,20,0.09)', ok: '#4E8A5E',
+  },
+  {
+    id: 'kraft', name: '牛皮纸', free: false, texture: 'kraft', boardTexture: 'kraft', cardTexture: 'kraft', hand: false,
+    bg: '#C3A078', card: '#D6BA92', board: '#DCC39C', text: '#2E2116', sub: '#5C4733', faint: '#957657',
+    given: '#2E2116', user: '#1F3E73', wrong: '#A3241B', note: '#5B4632', lineBold: '#3E2C1C', lineThin: '#B79570',
+    primary: '#46301D', primaryText: '#F3E6D0', soft: '#CBAA80', sel: '#BB976B', glow: '#F5D9A8', gold: '#8A5A16', shadow: 'rgba(50,30,10,0.14)', ok: '#3F7A44',
+  },
+  {
+    id: 'metal', name: '拉丝金属', free: false, texture: 'metal', boardTexture: 'metal', cardTexture: 'metal', hand: false,
+    bg: '#C5CAD0', card: '#DADEE2', board: '#E3E6E9', text: '#1E2329', sub: '#58606B', faint: '#9AA1AA',
+    given: '#1E2329', user: '#1F5FBF', wrong: '#D23C3C', note: '#4F5761', lineBold: '#363D46', lineThin: '#B4BAC2',
+    primary: '#2B3440', primaryText: '#F2F4F6', soft: '#CCD1D7', sel: '#B9C0C8', glow: '#8FB8FF', gold: '#B8862A', shadow: 'rgba(20,25,30,0.16)', ok: '#3A8F5E',
   },
 ];
 
@@ -254,7 +263,7 @@ __def("js/drawboard.js", function (module, exports, require) {
 // 画棋盘：局内和教学共用。
 // m = { vals[81], given[81], notes[81], wrong(k)→bool, selected, selDigit, sameHighlight,
 //       focus: 亮着的格（其余变淡）| null, rays, strike, mark, hintCells, pops:{k:t0}, shake:{k,t0}, flash:{k:t0}, now,
-//       texture, dark, hatch: 排除辅助线 }
+//       （质地、深浅、手画线从主题 th 里拿） }
 const S = require('./sudoku.js');
 const ui = require('./ui.js');
 const P = require('./platform.js');
@@ -346,9 +355,10 @@ function draw(ctx, th, geo, m, dpr) {
   ctx.save();
   ui.rr(ctx, geo.x, geo.y, geo.size, geo.size, 10);
   ctx.clip();
-  if (m.texture) Paper.fill(ctx, m.texture, dpr, m.dark, geo.x, geo.y, geo.size, geo.size);
+  Paper.fill(ctx, th.boardTexture, dpr, !!th.boardDark, geo.x, geo.y, geo.size, geo.size);
   // 高亮用主色的半透明，纸色和质地都透得出来
-  const HL = { rel: Paper.rgba(th.primary, m.dark ? 0.14 : 0.09), same: Paper.rgba(th.primary, m.dark ? 0.26 : 0.17), sel: Paper.rgba(th.primary, m.dark ? 0.4 : 0.27), hint: Paper.rgba(th.gold, 0.2) };
+  const dk = !!th.boardDark;
+  const HL = { rel: Paper.rgba(th.primary, dk ? 0.12 : 0.1), same: Paper.rgba(th.primary, dk ? 0.24 : 0.19), sel: Paper.rgba(th.primary, dk ? 0.36 : 0.3), hint: Paper.rgba(th.gold, 0.22) };
 
   // 高亮：同行同列同宫（浅）→ 相同数字（中）→ 选中格（深）
   const sel = m.selected;
@@ -365,28 +375,6 @@ function draw(ctx, th, geo, m, dpr) {
       ctx.fillStyle = bg;
       ctx.fillRect(r.x, r.y, cs + 0.5, cs + 0.5);
     }
-  }
-  if (m.hatch && digit) {
-    const cover = new Array(81).fill(false);
-    for (let k = 0; k < 81; k++) {
-      if (m.vals[k] !== digit || (m.wrong && m.wrong(k))) continue;
-      for (const u of S.UNITS_OF[k]) for (const x of S.UNITS[u]) cover[x] = true;
-    }
-    ctx.save();
-    ctx.strokeStyle = Paper.rgba(m.dark ? '#FFFFFF' : '#1F2A3A', m.dark ? 0.16 : 0.13);
-    ctx.lineWidth = 1;
-    for (let k = 0; k < 81; k++) {
-      if (!cover[k] || m.vals[k]) continue;
-      const r = cellRect(geo, k);
-      ctx.fillStyle = Paper.rgba(m.dark ? '#FFFFFF' : '#1F2A3A', 0.045);
-      ctx.fillRect(r.x, r.y, cs + 0.5, cs + 0.5);
-      ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, cs, cs); ctx.clip();
-      ctx.beginPath();
-      for (let d = -cs; d < cs; d += cs / 4) { ctx.moveTo(r.x + d, r.y + cs); ctx.lineTo(r.x + d + cs, r.y); }
-      ctx.stroke();
-      ctx.restore();
-    }
-    ctx.restore();
   }
   // 教学：被「划掉」的行列（淡红带）
   if (m.rays) {
@@ -411,7 +399,7 @@ function draw(ctx, th, geo, m, dpr) {
     }
   }
 
-  ctx.drawImage(linesLayer(geo, th, dpr, m.texture === 'hand'), 0, 0, Math.ceil(geo.size * dpr) + 4, Math.ceil(geo.size * dpr) + 4, geo.x - 1, geo.y - 1, (Math.ceil(geo.size * dpr) + 4) / dpr, (Math.ceil(geo.size * dpr) + 4) / dpr);
+  ctx.drawImage(linesLayer(geo, th, dpr, !!th.hand), 0, 0, Math.ceil(geo.size * dpr) + 4, Math.ceil(geo.size * dpr) + 4, geo.x - 1, geo.y - 1, (Math.ceil(geo.size * dpr) + 4) / dpr, (Math.ceil(geo.size * dpr) + 4) / dpr);
 
   // 数字和笔记
   const fs = Math.round(cs * 0.6), ns = Math.max(9, Math.round(cs * 0.27));
@@ -442,7 +430,7 @@ function draw(ctx, th, geo, m, dpr) {
       for (let d = 1; d <= 9; d++) {
         if (!(m.notes[k] & S.bit(d))) continue;
         const nx = r.x + ((d - 1) % 3 + 0.5) * cs / 3, ny = r.y + (Math.floor((d - 1) / 3) + 0.5) * cs / 3;
-        if (digit === d && m.sameHighlight !== false) ui.fillRR(ctx, nx - cs / 7, ny - cs / 7, cs / 3.5, cs / 3.5, 3, th.same);
+        if (digit === d && m.sameHighlight !== false) ui.fillRR(ctx, nx - cs / 7, ny - cs / 7, cs / 3.5, cs / 3.5, 3, HL.same);
         ui.text(ctx, String(d), nx + ox, ny + 0.5, ns, digit === d ? th.text : th.note, 'center', digit === d ? 600 : 400);
       }
     }
@@ -516,24 +504,12 @@ if (env.capsule) {
 app.headerH = HEADER_H;
 app.bottom = app.H - Math.max(env.safeBottom, 0);
 
-// 当前配色 = 主题（数字、高亮的颜色）+ 纸张（背景颜色）。夜间主题不换纸色，只叠质地
-let thCache = { key: '', th: null };
+// 当前主题（颜色 + 质地一整套）
 Object.defineProperty(app, 'th', {
-  get() {
-    const s = store.data.settings;
-    const key = s.theme + '|' + s.paper;
-    if (thCache.key !== key) {
-      const base = C.THEMES.find((t) => t.id === s.theme) || C.THEMES[0];
-      const paper = Paper.paperOf(s.paper);
-      thCache = { key, th: base.id === 'night' ? base : Object.assign({}, base, { bg: paper.bg, board: paper.board, card: paper.board }) };
-    }
-    return thCache.th;
-  },
+  get() { return C.THEMES.find((t) => t.id === store.data.settings.theme) || C.THEMES[0]; },
 });
-app.isDark = () => store.data.settings.theme === 'night';
-app.texture = () => store.data.settings.texture;
-// 卡片也铺上同样的质地
-ui.setTexture((ctx, x, y, w, h) => Paper.fill(ctx, app.texture(), app.dpr, app.isDark(), x, y, w, h));
+// 卡片也铺上这个主题的质地
+ui.setTexture((ctx, x, y, w, h) => Paper.fill(ctx, app.th.cardTexture, app.dpr, !!app.th.pageDark, x, y, w, h));
 
 // ---------- 动静 ----------
 app.redraw = () => { app.dirty = true; };
@@ -603,7 +579,7 @@ function render(t) {
   ctx.globalAlpha = 1;
   ctx.fillStyle = th.bg;
   ctx.fillRect(0, 0, app.W, app.H);
-  Paper.fill(ctx, app.texture(), app.dpr, app.isDark(), 0, 0, app.W, app.H);
+  Paper.fill(ctx, th.texture, app.dpr, !!th.pageDark, 0, 0, app.W, app.H);
   ui.beginFrame();
   // 换场景：淡入 + 轻轻上移 8 像素
   const p = Math.min(1, (t - (app.sceneT0 || 0)) / 220);
@@ -756,7 +732,6 @@ module.exports = function (app) {
     ['mistakeLimit', '错 3 次算输', '关掉就不限次数'],
     ['autoNotes', '自动擦笔记', '填对一个数，同行同列同宫的这个笔记擦掉'],
     ['sameHighlight', '高亮相同数字', ''],
-    ['hatch', '排除辅助线', '选中一个数，把它不能放的空格打上斜线'],
     ['showTimer', '显示计时', ''],
     ['sound', '声音', ''],
     ['vibrate', '震动', ''],
@@ -791,14 +766,12 @@ module.exports = function (app) {
         if (sub) ui.text(ctx, sub, 24, ry + 36, 12, th.sub);
         toggle(ctx, app.W - 72, ry + rowH / 2 - 14, set[key] !== false, th);
       });
-      // 外观：配色、背景颜色、质地（单独一页，能实时预览）
+      // 主题（颜色 + 质地一整套，单独一页，能实时预览）
       const ly = y + 54 + rowH * TOGGLES.length + 4;
       const on = ui.button({ id: 'set-look', x: 16, y: ly, w: app.W - 32, h: 52, onTap: () => { app.pop(); app.go('look', { back: back || { name: app.sceneName } }); } });
       ui.fillRR(ctx, 16, ly, app.W - 32, 52, 14, on ? th.sel : th.soft);
-      ui.text(ctx, '外观', 32, ly + 26, 16, th.text, 'left', 600);
-      const paper = Paper.paperOf(set.paper), tex = Paper.TEXTURES.find((x) => x.id === set.texture) || Paper.TEXTURES[0];
-      const tm = C.THEMES.find((x) => x.id === set.theme) || C.THEMES[0];
-      ui.text(ctx, tm.name + ' · ' + (tm.id === 'night' ? '深色' : paper.name) + ' · ' + tex.name, app.W - 52, ly + 26, 13, th.sub, 'right');
+      ui.text(ctx, '主题', 32, ly + 26, 16, th.text, 'left', 600);
+      ui.text(ctx, th.name, app.W - 52, ly + 26, 14, th.sub, 'right');
       ui.icons.chevron(ctx, app.W - 36, ly + 26, 18, th.faint);
       ui.pill(ctx, th, 'set-done', 16, ly + 62, app.W - 32, 48, '完成', () => app.pop(), 'primary');
     },
@@ -874,29 +847,9 @@ module.exports = function (app) {
 
 });
 __def("js/paper.js", function (module, exports, require) {
-// 纸张：背景颜色 × 质地，两样分开选（Cc 0.2：「白色背景稍微有一点晃眼……能不能像是手写纸的质感」）。
-// 质地是一块 256×256 的透明小图，画一次缓存起来，每帧铺满屏幕（十几次贴图，很便宜）。
+// 质地：每种材质用代码画成一块 256×256 的透明小图（四边接得上），画一次缓存，每帧铺满（十几次贴图，很便宜）。
+// 用哪种质地由主题决定（config.js 的 THEMES），玩家不单独选（Cc 0.3：「颜色加质地不要有额外可配置的选项」）。
 const P = require('./platform.js');
-
-// 背景颜色：页面底色 bg、棋盘和卡片的纸色 board。都避开纯白，不晃眼（纯白留一个给喜欢的人）
-const PAPERS = [
-  { id: 'cream', name: '米白', bg: '#F1EEE6', board: '#FBF9F3' },
-  { id: 'rice', name: '宣纸', bg: '#ECE3D0', board: '#F7F0E1' },
-  { id: 'green', name: '护眼绿', bg: '#E2EBDC', board: '#F0F5EC' },
-  { id: 'blue', name: '雾蓝', bg: '#E2E8F0', board: '#F0F3F7' },
-  { id: 'gray', name: '浅灰', bg: '#E7E7E9', board: '#F4F4F5' },
-  { id: 'pink', name: '樱粉', bg: '#F1E4E3', board: '#F9F1F0' },
-  { id: 'white', name: '纯白', bg: '#F6F4EF', board: '#FFFFFF' },
-];
-
-// 质地
-const TEXTURES = [
-  { id: 'flat', name: '纯色' },
-  { id: 'grain', name: '纸纹' },
-  { id: 'hand', name: '手写纸' }, // 纸纹 + 纤维 + 棋盘线像铅笔手画
-  { id: 'grid', name: '方格本' },
-  { id: 'linen', name: '布纹' },
-];
 
 const TILE = 256;
 const tiles = {};
@@ -904,95 +857,166 @@ function rng(seed) {
   let s = seed >>> 0 || 1;
   return () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
 }
-// dark：深色底上用浅色颗粒
+const col = (rgb, a) => 'rgba(' + rgb + ',' + Math.max(0, a).toFixed(3) + ')';
+
+// dark：深色底上，颗粒、纤维用浅色
 function tile(texture, dpr, dark) {
   const key = texture + '|' + dpr + '|' + (dark ? 1 : 0);
   if (key in tiles) return tiles[key];
-  if (texture === 'flat') { tiles[key] = null; return null; }
+  if (!texture || texture === 'flat') { tiles[key] = null; return null; }
   const c = P.makeCanvas(Math.round(TILE * dpr), Math.round(TILE * dpr));
   const g = c.getContext('2d');
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const r = rng(texture.length * 977 + 13);
-  const ink = dark ? '255,255,255' : '60,45,30';
-  // 颗粒：几千个很淡的小点
-  const speck = (n, a) => {
+  const r = rng(texture.length * 977 + texture.charCodeAt(0) * 31);
+  const INK = dark ? '255,255,255' : '60,45,30';
+  // 在 (x,y) 画，越过边界的部分在对边再画一次，四边才接得上
+  const wrap = (x, y, pad, fn) => {
+    for (const dx of [0, x < pad ? TILE : x > TILE - pad ? -TILE : 0]) for (const dy of [0, y < pad ? TILE : y > TILE - pad ? -TILE : 0]) fn(x + dx, y + dy);
+  };
+  const speck = (n, a, rgb, size) => {
     for (let i = 0; i < n; i++) {
-      g.fillStyle = 'rgba(' + ink + ',' + (a * (0.4 + r() * 0.6)).toFixed(3) + ')';
-      const s = r() < 0.85 ? 0.6 : 1.1;
+      g.fillStyle = col(rgb || INK, a * (0.35 + r() * 0.65));
+      const s = (size || 1) * (r() < 0.85 ? 0.6 : 1.2);
       g.fillRect(r() * TILE, r() * TILE, s, s);
     }
   };
-  // 斑：几团很大很淡的深浅，让纸面不那么匀
-  const blotch = (n, a) => {
+  const blotch = (n, a, rgb, rMin, rMax) => {
     for (let i = 0; i < n; i++) {
-      const x = r() * TILE, y = r() * TILE, rad = 30 + r() * 60;
-      for (const dx of [-TILE, 0, TILE]) for (const dy of [-TILE, 0, TILE]) {
-        const gr = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, rad);
-        gr.addColorStop(0, 'rgba(' + ink + ',' + a + ')');
-        gr.addColorStop(1, 'rgba(' + ink + ',0)');
+      const rad = (rMin || 30) + r() * ((rMax || 90) - (rMin || 30));
+      wrap(r() * TILE, r() * TILE, rad, (x, y) => {
+        const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+        gr.addColorStop(0, col(rgb || INK, a));
+        gr.addColorStop(0.5, col(rgb || INK, a * 0.55));
+        gr.addColorStop(1, col(rgb || INK, 0));
         g.fillStyle = gr;
-        g.fillRect(x + dx - rad, y + dy - rad, rad * 2, rad * 2);
-      }
+        g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+      });
     }
   };
-  // 纤维：短短的弯线
-  const fibers = (n, a) => {
+  const fibers = (n, a, lenMin, lenMax, rgb) => {
     g.lineCap = 'round';
     for (let i = 0; i < n; i++) {
-      const x = r() * TILE, y = r() * TILE, len = 4 + r() * 12, ang = r() * Math.PI;
-      g.strokeStyle = 'rgba(' + ink + ',' + (a * (0.5 + r() * 0.5)).toFixed(3) + ')';
-      g.lineWidth = 0.4 + r() * 0.5;
+      const len = lenMin + r() * (lenMax - lenMin), ang = r() * Math.PI, bend = (r() - 0.5) * len * 0.5;
+      const alpha = a * (0.4 + r() * 0.6), w = 0.35 + r() * 0.55;
+      wrap(r() * TILE, r() * TILE, len, (x, y) => {
+        g.strokeStyle = col(rgb || INK, alpha);
+        g.lineWidth = w;
+        g.beginPath();
+        g.moveTo(x, y);
+        g.quadraticCurveTo(x + Math.cos(ang) * len * 0.5 - Math.sin(ang) * bend, y + Math.sin(ang) * len * 0.5 + Math.cos(ang) * bend, x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+        g.stroke();
+      });
+    }
+  };
+  // 横向的波浪线（木纹、拉丝）：周期是 TILE 的整数分之一，左右接得上
+  const wave = (y0, amp, k, ph, w, color) => {
+    for (const dy of [0, -TILE, TILE]) {
+      g.strokeStyle = color;
+      g.lineWidth = w;
       g.beginPath();
-      g.moveTo(x, y);
-      g.quadraticCurveTo(x + Math.cos(ang) * len * 0.5 + (r() - 0.5) * 4, y + Math.sin(ang) * len * 0.5 + (r() - 0.5) * 4, x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+      for (let x = 0; x <= TILE; x += 4) {
+        const y = y0 + dy + amp * Math.sin((Math.PI * 2 * k * x) / TILE + ph) + amp * 0.35 * Math.sin((Math.PI * 2 * (k + 1) * x) / TILE + ph * 1.7);
+        if (x === 0) g.moveTo(x, y); else g.lineTo(x, y);
+      }
       g.stroke();
     }
   };
-  const k = dark ? 0.7 : 1;
-  if (texture === 'grain') { blotch(5, 0.018 * k); speck(2600, 0.07 * k); }
-  else if (texture === 'hand') { blotch(7, 0.03 * k); speck(3200, 0.09 * k); fibers(160, 0.12 * k); }
-  else if (texture === 'grid') {
-    speck(1400, 0.05 * k);
-    g.strokeStyle = 'rgba(' + (dark ? '255,255,255' : '70,110,170') + ',' + (0.09 * k) + ')';
-    g.lineWidth = 0.6;
-    g.beginPath();
-    for (let i = 0; i <= TILE; i += 16) { g.moveTo(i + 0.3, 0); g.lineTo(i + 0.3, TILE); g.moveTo(0, i + 0.3); g.lineTo(TILE, i + 0.3); }
-    g.stroke();
-  } else if (texture === 'linen') {
-    g.lineWidth = 0.5;
-    for (let i = 0; i < TILE; i += 2) {
-      g.strokeStyle = 'rgba(' + ink + ',' + ((0.02 + r() * 0.035) * k).toFixed(3) + ')';
-      g.beginPath(); g.moveTo(0, i + 0.25); g.lineTo(TILE, i + 0.25); g.stroke();
-      g.strokeStyle = 'rgba(' + ink + ',' + ((0.02 + r() * 0.035) * k).toFixed(3) + ')';
-      g.beginPath(); g.moveTo(i + 0.25, 0); g.lineTo(i + 0.25, TILE); g.stroke();
+
+  switch (texture) {
+    case 'grain': // 纸纹
+      blotch(4, 0.01, null, 70, 120);
+      speck(2600, 0.07);
+      break;
+    case 'hand': // 手写纸：纸纹 + 纤维
+      blotch(4, 0.012, null, 70, 120);
+      speck(3000, 0.085);
+      fibers(150, 0.11, 4, 14);
+      break;
+    case 'notebook': { // 横线本：纸纹 + 每 32 像素一条浅蓝横线
+      blotch(3, 0.01, null, 70, 120);
+      speck(2200, 0.07);
+      fibers(70, 0.08, 4, 12);
+      g.strokeStyle = 'rgba(70,115,190,0.22)';
+      g.lineWidth = 0.8;
+      for (let y = 16; y < TILE; y += 32) { g.beginPath(); g.moveTo(0, y + 0.4); g.lineTo(TILE, y + 0.4); g.stroke(); }
+      break;
     }
-    speck(800, 0.05 * k);
+    case 'chalk': // 黑板：擦过的粉笔灰一团团 + 细小粉笔点 + 几道擦痕
+      blotch(6, 0.018, '255,255,255', 50, 110);
+      speck(2600, 0.085, '255,255,255');
+      // 擦痕：拉长的柔边椭圆（圆形渐变压扁再转个角度），边缘看不出来
+      for (let i = 0; i < 22; i++) {
+        const len = 30 + r() * 60, w = 8 + r() * 12, ang = r() * Math.PI, a = 0.02 + r() * 0.025;
+        wrap(r() * TILE, r() * TILE, len, (x, y) => {
+          g.save();
+          g.translate(x, y); g.rotate(ang); g.scale(len / w, 1);
+          const gr = g.createRadialGradient(0, 0, 0, 0, 0, w);
+          gr.addColorStop(0, col('255,255,255', a));
+          gr.addColorStop(0.6, col('255,255,255', a * 0.45));
+          gr.addColorStop(1, col('255,255,255', 0));
+          g.fillStyle = gr;
+          g.fillRect(-w, -w, w * 2, w * 2);
+          g.restore();
+        });
+      }
+      break;
+    case 'wood': // 深色胡桃木：深浅交替的长木纹
+    case 'woodLight': { // 浅色枫木
+      const light = texture === 'woodLight';
+      for (let i = 0; i < 70; i++) {
+        const darker = r() < 0.6;
+        const a = light ? (darker ? 0.05 + r() * 0.08 : 0.04 + r() * 0.05) : (darker ? 0.08 + r() * 0.12 : 0.03 + r() * 0.05);
+        wave(r() * TILE, 1 + r() * 5, 1 + Math.floor(r() * 3), r() * 6, 0.4 + r() * 2.2, col(darker ? (light ? '120,75,30' : '20,10,4') : '255,235,200', a));
+      }
+      speck(900, light ? 0.06 : 0.08, light ? '110,70,30' : '20,10,4');
+      break;
+    }
+    case 'rice': // 宣纸：长纤维 + 淡淡的墨晕
+      blotch(4, 0.014, '50,40,30', 70, 120);
+      speck(1800, 0.06);
+      fibers(90, 0.065, 10, 26, '120,100,70');
+      fibers(70, 0.06, 4, 10);
+      break;
+    case 'kraft': // 牛皮纸：密的深色颗粒 + 纤维
+      blotch(5, 0.02, '70,45,20', 60, 120);
+      speck(4200, 0.1, '60,38,18');
+      speck(900, 0.08, '255,240,210');
+      fibers(220, 0.13, 5, 18, '70,45,20');
+      break;
+    case 'metal': // 拉丝金属：密密的横向细纹，亮暗交替
+      for (let i = 0; i < 520; i++) {
+        const y = r() * TILE, x = r() * TILE, len = 30 + r() * 160, bright = r() < 0.5;
+        const a = 0.04 + r() * 0.08;
+        g.strokeStyle = col(bright ? '255,255,255' : '40,50,60', a);
+        g.lineWidth = 0.5 + r() * 0.6;
+        for (const dx of [0, -TILE]) { g.beginPath(); g.moveTo(x + dx, y); g.lineTo(x + dx + len, y); g.stroke(); }
+      }
+      break;
+    default:
+      break;
   }
   tiles[key] = c;
   return c;
 }
 
-// 在 (x,y,w,h) 这块里铺满质地（调用前自己 clip 好形状）
+// 在 (x,y,w,h) 这块里铺满质地（调用前自己 clip 好形状）。从屏幕原点对齐，棋盘和页面的纹理接得上
 function fill(ctx, texture, dpr, dark, x, y, w, h) {
   const t = tile(texture, dpr, dark);
   if (!t) return;
   const px = t.width;
-  // 从屏幕原点对齐，棋盘和页面的纹理接得上
   const x0 = Math.floor(x / TILE) * TILE, y0 = Math.floor(y / TILE) * TILE;
   for (let ty = y0; ty < y + h; ty += TILE) {
     for (let tx = x0; tx < x + w; tx += TILE) ctx.drawImage(t, 0, 0, px, px, tx, ty, TILE, TILE);
   }
 }
 
-const paperOf = (id) => PAPERS.find((p) => p.id === id) || PAPERS[0];
-
-// '#RRGGBB' → 'rgba(r,g,b,a)'：棋盘高亮用半透明，任何纸色、质地都透得出来
+// '#RRGGBB' → 'rgba(r,g,b,a)'
 function rgba(hex, a) {
   const n = parseInt(hex.slice(1), 16);
   return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
 }
 
-module.exports = { PAPERS, TEXTURES, tile, fill, paperOf, rgba, TILE };
+module.exports = { tile, fill, rgba, TILE };
 
 });
 __def("js/platform.js", function (module, exports, require) {
@@ -1227,7 +1251,7 @@ module.exports = function (app) {
       const ch = 96;
       const pd = ui.button({ id: 'home-daily', x: 16, y, w: W - 32, h: ch, onTap: () => app.go('daily') });
       ui.card(ctx, 16, y, W - 32, ch, 18, th);
-      if (pd) ui.fillRR(ctx, 16, y, W - 32, ch, 18, th.rel);
+      if (pd) ui.fillRR(ctx, 16, y, W - 32, ch, 18, (th.pageDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'));
       ui.icons.calendar(ctx, 46, y + 32, 26, th.primary);
       ui.text(ctx, '每日挑战', 68, y + 32, 17, th.text, 'left', 600);
       ui.text(ctx, (d.getMonth() + 1) + '月' + d.getDate() + '日 · ' + S.TIERS[pick.tier].name + (doneToday ? ' · 已完成 ✓' : ''), 32, y + 66, 13, doneToday ? th.ok : th.sub);
@@ -1245,7 +1269,9 @@ module.exports = function (app) {
         ui.fillRR(ctx, 16, y, W - 32, bh, 18, th.primary);
         ui.text(ctx, '继续游戏', W / 2, y + 23, 18, th.primaryText, 'center', 600);
         const label = (cur.mode === 'daily' ? '每日挑战 · ' : '') + S.TIERS[cur.tier].name + ' · ' + app.fmt(cur.elapsed);
-        ui.text(ctx, label, W / 2, y + 44, 12, 'rgba(255,255,255,0.8)', 'center');
+        ctx.globalAlpha = 0.8;
+        ui.text(ctx, label, W / 2, y + 44, 12, th.primaryText, 'center');
+        ctx.globalAlpha = 1;
         ctx.restore();
         y += bh + 12;
         ui.pill(ctx, th, 'home-new', 16, y, W - 32, 54, '新游戏', () => app.difficultySheet(), 'card');
@@ -1267,7 +1293,7 @@ module.exports = function (app) {
         const x = 16 + (i % 2) * (tw + gap), ty = y + Math.floor(i / 2) * (tH + gap);
         const p = ui.button({ id: 'home-' + tl.id, x, y: ty, w: tw, h: tH, onTap: () => app.go(tl.id) });
         ui.card(ctx, x, ty, tw, tH, 16, th);
-        if (p) ui.fillRR(ctx, x, ty, tw, tH, 16, th.rel);
+        if (p) ui.fillRR(ctx, x, ty, tw, tH, 16, (th.pageDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'));
         ui.icons[tl.icon](ctx, x + 30, ty + tH / 2, 26, th.primary);
         ui.text(ctx, tl.label, x + 54, ty + tH / 2 - 10, 16, th.text, 'left', 600);
         ui.text(ctx, tl.sub, x + 54, ty + tH / 2 + 12, 12, th.sub);
@@ -1300,7 +1326,7 @@ module.exports = function (app) {
         const h = 72;
         const on = ui.button({ id: 'lesson-' + i, x: 16, y, w: W - 32, h, onTap: () => app.go('lesson', { index: i }) });
         ui.card(ctx, 16, y, W - 32, h, 16, th);
-        if (on) ui.fillRR(ctx, 16, y, W - 32, h, 16, th.rel);
+        if (on) ui.fillRR(ctx, 16, y, W - 32, h, 16, (th.pageDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'));
         ctx.beginPath(); ctx.arc(52, y + h / 2, 18, 0, Math.PI * 2); ctx.fillStyle = done ? th.ok : th.soft; ctx.fill();
         if (done) ui.icons.check(ctx, 52, y + h / 2, 20, '#FFFFFF');
         else ui.text(ctx, String(i + 1), 52, y + h / 2, 16, th.primary, 'center', 700);
@@ -1475,7 +1501,6 @@ module.exports = function (app) {
         vals, given: lesson.given, notes: lesson.notes, wrong: () => false,
         selected: lesson.sel, sameHighlight: true, focus: st.focus,
         rays: showRays ? st.rays : null, mark: st.mark, pops: lesson.fx.pops, rings: lesson.fx.rings, shake: lesson.fx.shake, now: t,
-        texture: app.texture(), dark: app.isDark(),
       }, app.dpr);
 
       // 底部：练习步 = 工具 + 数字键；演示步 = 「下一步」
@@ -1545,7 +1570,7 @@ module.exports = function (app) {
 
 });
 __def("js/scene_look.js", function (module, exports, require) {
-// 外观：上面一块小棋盘实时预览，下面三排方块：配色、背景颜色、质地。点一下立刻换。
+// 主题：上面一块小棋盘实时预览，下面 7 个主题方块（颜色 + 质地一整套，学 Sudoku 2 的皮肤）。点一下立刻换。
 const ui = require('./ui.js');
 const C = require('./config.js');
 const store = require('./store.js');
@@ -1555,93 +1580,83 @@ const T = require('./tutorial.js');
 
 module.exports = function (app) {
   let back = null;
-  // 预览盘：一道题的样子，选中一格、有笔记，看得出高亮和数字颜色
+  // 预览盘：像一道真题，选中一格、有笔记、有自己填的数
   const vals = T.SOL.map((v, k) => ((k * 7) % 5 < 2 ? v : 0));
   const given = vals.map(Boolean);
   vals[30] = T.SOL[30];
+  vals[58] = T.SOL[58];
   const notes = new Array(81).fill(0);
   notes[31] = (1 << 2) | (1 << 5) | (1 << 8);
   notes[49] = (1 << 1) | (1 << 4);
 
-  function square(ctx, th, id, x, y, s, selected, drawInside, label, onTap, locked) {
-    const on = ui.button({ id, x, y: y - 4, w: s, h: s + 26, onTap });
+  // 一个主题方块：页面底 + 质地，中间一小块棋盘（棋盘色 + 质地 + 格线），写一个题目数字和一个自己填的数字
+  function themeTile(ctx, th, tm, x, y, w, h, selected, locked) {
+    const dpr = app.dpr;
     ctx.save();
-    if (on) { ctx.translate(x + s / 2, y + s / 2); ctx.scale(0.94, 0.94); ctx.translate(-x - s / 2, -y - s / 2); }
-    ui.rr(ctx, x, y, s, s, 12);
-    ctx.save(); ctx.clip(); drawInside(x, y, s); ctx.restore();
-    ui.rr(ctx, x, y, s, s, 12);
-    ctx.lineWidth = selected ? 3 : 1;
-    ctx.strokeStyle = selected ? th.primary : 'rgba(0,0,0,0.12)';
+    ui.rr(ctx, x, y, w, h, 14);
+    ctx.clip();
+    ctx.fillStyle = tm.bg; ctx.fillRect(x, y, w, h);
+    Paper.fill(ctx, tm.texture, dpr, !!tm.pageDark, x, y, w, h);
+    const bx = x + w * 0.16, by = y + h * 0.14, bs = Math.min(w * 0.68, h * 0.62);
+    ui.fillRR(ctx, bx, by, bs, bs, 6, tm.board);
+    ctx.save(); ui.rr(ctx, bx, by, bs, bs, 6); ctx.clip();
+    Paper.fill(ctx, tm.boardTexture, dpr, !!tm.boardDark, bx, by, bs, bs);
+    ctx.strokeStyle = tm.lineThin; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 1; i < 3; i++) { ctx.moveTo(bx + (bs * i) / 3, by); ctx.lineTo(bx + (bs * i) / 3, by + bs); ctx.moveTo(bx, by + (bs * i) / 3); ctx.lineTo(bx + bs, by + (bs * i) / 3); }
     ctx.stroke();
-    if (selected) {
-      ctx.beginPath(); ctx.arc(x + s - 8, y + 8, 9, 0, Math.PI * 2); ctx.fillStyle = th.primary; ctx.fill();
-      ui.icons.check(ctx, x + s - 8, y + 8, 12, '#FFFFFF', 2);
-    }
+    ctx.fillStyle = Paper.rgba(tm.primary, tm.boardDark ? 0.36 : 0.3);
+    ctx.fillRect(bx + bs / 3, by + bs / 3, bs / 3, bs / 3);
+    ctx.restore();
+    ui.rr(ctx, bx, by, bs, bs, 6); ctx.strokeStyle = tm.lineBold; ctx.lineWidth = 1.5; ctx.stroke();
+    const fs = bs * 0.26;
+    ui.text(ctx, '5', bx + bs / 6, by + bs / 6 + 1, fs, tm.given, 'center', 500);
+    ui.text(ctx, '7', bx + bs / 2, by + bs / 2 + 1, fs, tm.user, 'center', 400);
+    ui.text(ctx, '3', bx + (bs * 5) / 6, by + (bs * 5) / 6 + 1, fs, tm.given, 'center', 500);
+    ui.text(ctx, tm.name, x + w / 2, y + h - 13, 12, tm.text, 'center', 600);
     if (locked) {
-      // 没解锁：整块蒙一层，右下角一个小锁
-      ui.fillRR(ctx, x, y, s, s, 12, 'rgba(255,255,255,0.45)');
-      ctx.beginPath(); ctx.arc(x + s - 9, y + s - 9, 10, 0, Math.PI * 2); ctx.fillStyle = 'rgba(40,44,52,0.75)'; ctx.fill();
-      ui.icons.lock(ctx, x + s - 9, y + s - 8, 12, '#FFFFFF');
+      ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.fillRect(x, y, w, h);
+      ctx.beginPath(); ctx.arc(x + w - 14, y + 14, 11, 0, Math.PI * 2); ctx.fillStyle = 'rgba(30,34,40,0.78)'; ctx.fill();
+      ui.icons.lock(ctx, x + w - 14, y + 15, 13, '#FFFFFF');
     }
     ctx.restore();
-    ui.text(ctx, label, x + s / 2, y + s + 13, 12, selected ? th.primary : th.sub, 'center', selected ? 600 : 400);
+    ui.rr(ctx, x, y, w, h, 14);
+    ctx.lineWidth = selected ? 3 : 1;
+    ctx.strokeStyle = selected ? th.primary : 'rgba(0,0,0,0.14)';
+    ctx.stroke();
+    if (selected) {
+      ctx.beginPath(); ctx.arc(x + w - 14, y + 14, 11, 0, Math.PI * 2); ctx.fillStyle = th.primary; ctx.fill();
+      ui.icons.check(ctx, x + w - 14, y + 14, 14, th.primaryText, 2.2);
+    }
   }
 
   app.scenes.look = {
     enter(args) { back = args.back || { name: 'home' }; },
     draw(ctx) {
       const th = app.th, W = app.W, set = store.data.settings;
-      app.header(ctx, '外观', () => app.go(back.name, back.args || {}));
+      app.header(ctx, '主题', () => app.go(back.name, back.args || {}));
       let y = app.headerY + app.headerH + 8;
-      // 预览
-      const size = Math.max(135, Math.min(252, Math.floor((app.bottom - y - 330) / 9) * 9));
-      const geo = { x: Math.round((W - size) / 2), y, size };
-      DB.draw(ctx, th, geo, { vals, given, notes, wrong: (k) => k === 12 && false, selected: 30, sameHighlight: set.sameHighlight, now: app.now, texture: set.texture, dark: app.isDark() }, app.dpr);
-      y += size + 18;
-
-      const s = Math.min(52, (W - 32 - 6 * 10) / 7);
-      const row = (title, items) => {
-        ui.text(ctx, title, 20, y + 8, 15, th.text, 'left', 600);
-        y += 24;
-        const gap = (W - 32 - items.length * s) / Math.max(1, items.length - 1);
-        items.forEach((it, i) => it(16 + i * (s + gap), y));
-        y += s + 34;
-      };
-      // 配色（数字、高亮的颜色）
-      row('配色', C.THEMES.map((tm) => (x, yy) => {
-        const have = store.data.themes[tm.id];
-        square(ctx, th, 'look-theme-' + tm.id, x, yy, s, set.theme === tm.id, (qx, qy, qs) => {
-          ctx.fillStyle = tm.id === 'night' ? tm.board : th.board; ctx.fillRect(qx, qy, qs, qs);
-          ui.text(ctx, '5', qx + qs * 0.33, qy + qs * 0.5, qs * 0.42, tm.given, 'center', 500);
-          ui.text(ctx, '7', qx + qs * 0.68, qy + qs * 0.5, qs * 0.42, tm.user, 'center', 400);
-          ctx.fillStyle = tm.primary; ctx.fillRect(qx, qy + qs - 7, qs, 7);
-        }, tm.name, () => {
+      // 主题方块：一行 4 个，两行
+      const cols = 4, gap = 10, tw = (W - 32 - gap * (cols - 1)) / cols, tH = tw * 1.18;
+      const gridH = tH * 2 + gap + 30;
+      const size = Math.max(135, Math.min(270, Math.floor((app.bottom - 16 - y - gridH - 20) / 9) * 9));
+      DB.draw(ctx, th, { x: Math.round((W - size) / 2), y, size }, { vals, given, notes, wrong: () => false, selected: 30, sameHighlight: set.sameHighlight, now: app.now }, app.dpr);
+      y += size + 20;
+      const unlocked = C.THEMES.filter((t) => store.data.themes[t.id]).length;
+      ui.text(ctx, '已解锁 ' + unlocked + ' / ' + C.THEMES.length + ' · 结算页看视频解锁更多', W / 2, y, 12, th.sub, 'center');
+      y += 18;
+      C.THEMES.forEach((tm, i) => {
+        const x = 16 + (i % cols) * (tw + gap), ty = y + Math.floor(i / cols) * (tH + gap);
+        const have = !!store.data.themes[tm.id];
+        const on = ui.button({ id: 'look-theme-' + tm.id, x, y: ty, w: tw, h: tH, onTap: () => {
           if (!have) { app.toast('完成一局后，在结算页看视频解锁'); return; }
           set.theme = tm.id; store.save(); app.sound('tap');
-        }, !have);
-      }));
-      // 背景颜色
-      const dark = app.isDark();
-      row('背景颜色' + (dark ? '（夜间配色下不换）' : ''), Paper.PAPERS.map((pp) => (x, yy) => {
-        square(ctx, th, 'look-paper-' + pp.id, x, yy, s, set.paper === pp.id && !dark, (qx, qy, qs) => {
-          ctx.fillStyle = pp.bg; ctx.fillRect(qx, qy, qs, qs);
-          ui.fillRR(ctx, qx + qs * 0.22, qy + qs * 0.22, qs * 0.56, qs * 0.56, 5, pp.board);
-        }, pp.name, () => { set.paper = pp.id; store.save(); app.sound('tap'); if (dark) app.toast('换回浅色配色就能看到'); });
-      }));
-      // 质地
-      row('质地', Paper.TEXTURES.map((tx) => (x, yy) => {
-        square(ctx, th, 'look-tex-' + tx.id, x, yy, s, set.texture === tx.id, (qx, qy, qs) => {
-          ctx.fillStyle = th.board; ctx.fillRect(qx, qy, qs, qs);
-          // 质地方块里放大两倍，看得清
-          ctx.save(); ctx.translate(qx, qy); ctx.scale(2, 2);
-          Paper.fill(ctx, tx.id, app.dpr, dark, 0, 0, qs / 2, qs / 2);
-          ctx.restore();
-          if (tx.id === 'hand') {
-            ctx.strokeStyle = th.lineBold; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(qx + qs * 0.5, qy + 6); ctx.quadraticCurveTo(qx + qs * 0.53, qy + qs * 0.5, qx + qs * 0.49, qy + qs - 6); ctx.stroke();
-          }
-        }, tx.name, () => { set.texture = tx.id; store.save(); app.sound('tap'); });
-      }));
+        } });
+        ctx.save();
+        if (on) { ctx.translate(x + tw / 2, ty + tH / 2); ctx.scale(0.95, 0.95); ctx.translate(-x - tw / 2, -ty - tH / 2); }
+        themeTile(ctx, th, tm, x, ty, tw, tH, set.theme === tm.id, !have);
+        ctx.restore();
+      });
     },
   };
 };
@@ -1705,16 +1720,16 @@ module.exports = function (app) {
       const locked = C.THEMES.filter((tm) => !store.data.themes[tm.id]);
       if (locked.length) {
         const tm = locked[0];
-        const on = ui.button({ id: 'res-theme', x: 16, y, w: W - 32, h: 50, onTap: () => app.showAd('theme', '「' + tm.name + '」配色', () => {
+        const on = ui.button({ id: 'res-theme', x: 16, y, w: W - 32, h: 50, onTap: () => app.showAd('theme', '「' + tm.name + '」主题', () => {
           store.data.themes[tm.id] = true;
           store.data.settings.theme = tm.id;
           store.save();
-          app.toast('已换上「' + tm.name + '」配色，设置里可以换回');
+          app.toast('已换上「' + tm.name + '」主题，设置里可以换回');
         }) });
         ui.fillRR(ctx, 16, y, W - 32, 50, 16, on ? th.sel : th.soft);
         ui.icons.video(ctx, 44, y + 25, 22, th.gold);
         ctx.beginPath(); ctx.arc(W - 44, y + 25, 11, 0, Math.PI * 2); ctx.fillStyle = tm.primary; ctx.fill();
-        ui.text(ctx, '看视频，解锁「' + tm.name + '」配色', W / 2, y + 25, 15, th.primary, 'center', 600);
+        ui.text(ctx, '看视频，解锁「' + tm.name + '」主题', W / 2, y + 25, 15, th.primary, 'center', 600);
       }
     },
   };
@@ -2229,7 +2244,6 @@ module.exports = function (app) {
         selected: b.selected, sameHighlight: store.data.settings.sameHighlight,
         hintCells: hint ? hint.cells : null,
         pops: fx.pops, rings: fx.rings, flash: fx.flash, shake: fx.shake, now: t,
-        texture: app.texture(), dark: app.isDark(), hatch: store.data.settings.hatch,
       }, app.dpr);
       if (paused) {
         ui.fillRR(ctx, geo.x, geo.y, geo.size, geo.size, 10, th.board);
@@ -2335,14 +2349,21 @@ const data = Object.assign({
   stats: S.TIERS.map(blankStats),
   daily: {}, // '2026-11-20': { time, score }
   lessons: {}, // 'rules': true
-  themes: { morning: true, night: true },
+  themes: {},
   current: null, // 正在玩的那一局（board.js 的对象）
   seen: { tutorial: false },
   next: [0, 0, 0, 0, 0, 0], // 每档下一题从题库第几题开始
 }, P.load(KEY) || {});
 // 老存档缺的字段补上（设置要逐项补，不然老存档会把新加的开关整个盖掉）
-const SETTINGS = { mistakeLimit: true, autoNotes: true, sameHighlight: true, hatch: false, showTimer: true, sound: true, vibrate: true, theme: 'morning', paper: 'cream', texture: 'grain' };
+const SETTINGS = { mistakeLimit: true, autoNotes: true, sameHighlight: true, showTimer: true, sound: true, vibrate: true, theme: 'paper' };
 data.settings = Object.assign({}, SETTINGS, data.settings || {});
+// 0.1 / 0.2 的老主题名换成新的；免费主题一定在
+const OLD_THEME = { morning: 'paper', night: 'chalk', mint: 'paper', apricot: 'paper', lilac: 'paper' };
+if (OLD_THEME[data.settings.theme]) data.settings.theme = OLD_THEME[data.settings.theme];
+delete data.settings.paper; delete data.settings.texture; delete data.settings.hatch;
+data.themes = data.themes || {};
+C.THEMES.forEach((t) => { if (t.free) data.themes[t.id] = true; });
+if (!C.THEMES.some((t) => t.id === data.settings.theme)) data.settings.theme = 'paper';
 data.stats = S.TIERS.map((_, i) => Object.assign(blankStats(), (data.stats || [])[i] || {}));
 
 function save() { P.save(KEY, data); }

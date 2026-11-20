@@ -1,7 +1,7 @@
 // 画棋盘：局内和教学共用。
 // m = { vals[81], given[81], notes[81], wrong(k)→bool, selected, selDigit, sameHighlight,
 //       focus: 亮着的格（其余变淡）| null, rays, strike, mark, hintCells, pops:{k:t0}, shake:{k,t0}, flash:{k:t0}, now,
-//       texture, dark, hatch: 排除辅助线 }
+//       （质地、深浅、手画线从主题 th 里拿） }
 const S = require('./sudoku.js');
 const ui = require('./ui.js');
 const P = require('./platform.js');
@@ -93,9 +93,10 @@ function draw(ctx, th, geo, m, dpr) {
   ctx.save();
   ui.rr(ctx, geo.x, geo.y, geo.size, geo.size, 10);
   ctx.clip();
-  if (m.texture) Paper.fill(ctx, m.texture, dpr, m.dark, geo.x, geo.y, geo.size, geo.size);
+  Paper.fill(ctx, th.boardTexture, dpr, !!th.boardDark, geo.x, geo.y, geo.size, geo.size);
   // 高亮用主色的半透明，纸色和质地都透得出来
-  const HL = { rel: Paper.rgba(th.primary, m.dark ? 0.14 : 0.09), same: Paper.rgba(th.primary, m.dark ? 0.26 : 0.17), sel: Paper.rgba(th.primary, m.dark ? 0.4 : 0.27), hint: Paper.rgba(th.gold, 0.2) };
+  const dk = !!th.boardDark;
+  const HL = { rel: Paper.rgba(th.primary, dk ? 0.12 : 0.1), same: Paper.rgba(th.primary, dk ? 0.24 : 0.19), sel: Paper.rgba(th.primary, dk ? 0.36 : 0.3), hint: Paper.rgba(th.gold, 0.22) };
 
   // 高亮：同行同列同宫（浅）→ 相同数字（中）→ 选中格（深）
   const sel = m.selected;
@@ -112,28 +113,6 @@ function draw(ctx, th, geo, m, dpr) {
       ctx.fillStyle = bg;
       ctx.fillRect(r.x, r.y, cs + 0.5, cs + 0.5);
     }
-  }
-  if (m.hatch && digit) {
-    const cover = new Array(81).fill(false);
-    for (let k = 0; k < 81; k++) {
-      if (m.vals[k] !== digit || (m.wrong && m.wrong(k))) continue;
-      for (const u of S.UNITS_OF[k]) for (const x of S.UNITS[u]) cover[x] = true;
-    }
-    ctx.save();
-    ctx.strokeStyle = Paper.rgba(m.dark ? '#FFFFFF' : '#1F2A3A', m.dark ? 0.16 : 0.13);
-    ctx.lineWidth = 1;
-    for (let k = 0; k < 81; k++) {
-      if (!cover[k] || m.vals[k]) continue;
-      const r = cellRect(geo, k);
-      ctx.fillStyle = Paper.rgba(m.dark ? '#FFFFFF' : '#1F2A3A', 0.045);
-      ctx.fillRect(r.x, r.y, cs + 0.5, cs + 0.5);
-      ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, cs, cs); ctx.clip();
-      ctx.beginPath();
-      for (let d = -cs; d < cs; d += cs / 4) { ctx.moveTo(r.x + d, r.y + cs); ctx.lineTo(r.x + d + cs, r.y); }
-      ctx.stroke();
-      ctx.restore();
-    }
-    ctx.restore();
   }
   // 教学：被「划掉」的行列（淡红带）
   if (m.rays) {
@@ -158,7 +137,7 @@ function draw(ctx, th, geo, m, dpr) {
     }
   }
 
-  ctx.drawImage(linesLayer(geo, th, dpr, m.texture === 'hand'), 0, 0, Math.ceil(geo.size * dpr) + 4, Math.ceil(geo.size * dpr) + 4, geo.x - 1, geo.y - 1, (Math.ceil(geo.size * dpr) + 4) / dpr, (Math.ceil(geo.size * dpr) + 4) / dpr);
+  ctx.drawImage(linesLayer(geo, th, dpr, !!th.hand), 0, 0, Math.ceil(geo.size * dpr) + 4, Math.ceil(geo.size * dpr) + 4, geo.x - 1, geo.y - 1, (Math.ceil(geo.size * dpr) + 4) / dpr, (Math.ceil(geo.size * dpr) + 4) / dpr);
 
   // 数字和笔记
   const fs = Math.round(cs * 0.6), ns = Math.max(9, Math.round(cs * 0.27));
@@ -189,7 +168,7 @@ function draw(ctx, th, geo, m, dpr) {
       for (let d = 1; d <= 9; d++) {
         if (!(m.notes[k] & S.bit(d))) continue;
         const nx = r.x + ((d - 1) % 3 + 0.5) * cs / 3, ny = r.y + (Math.floor((d - 1) / 3) + 0.5) * cs / 3;
-        if (digit === d && m.sameHighlight !== false) ui.fillRR(ctx, nx - cs / 7, ny - cs / 7, cs / 3.5, cs / 3.5, 3, th.same);
+        if (digit === d && m.sameHighlight !== false) ui.fillRR(ctx, nx - cs / 7, ny - cs / 7, cs / 3.5, cs / 3.5, 3, HL.same);
         ui.text(ctx, String(d), nx + ox, ny + 0.5, ns, digit === d ? th.text : th.note, 'center', digit === d ? 600 : 400);
       }
     }

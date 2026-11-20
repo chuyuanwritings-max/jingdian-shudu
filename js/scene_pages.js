@@ -55,16 +55,16 @@ module.exports = function (app) {
       const locked = C.THEMES.filter((tm) => !store.data.themes[tm.id]);
       if (locked.length) {
         const tm = locked[0];
-        const on = ui.button({ id: 'res-theme', x: 16, y, w: W - 32, h: 50, onTap: () => app.showAd('theme', '「' + tm.name + '」配色', () => {
+        const on = ui.button({ id: 'res-theme', x: 16, y, w: W - 32, h: 50, onTap: () => app.showAd('theme', '「' + tm.name + '」主题', () => {
           store.data.themes[tm.id] = true;
           store.data.settings.theme = tm.id;
           store.save();
-          app.toast('已换上「' + tm.name + '」配色，设置里可以换回');
+          app.toast('已换上「' + tm.name + '」主题，设置里可以换回');
         }) });
         ui.fillRR(ctx, 16, y, W - 32, 50, 16, on ? th.sel : th.soft);
         ui.icons.video(ctx, 44, y + 25, 22, th.gold);
         ctx.beginPath(); ctx.arc(W - 44, y + 25, 11, 0, Math.PI * 2); ctx.fillStyle = tm.primary; ctx.fill();
-        ui.text(ctx, '看视频，解锁「' + tm.name + '」配色', W / 2, y + 25, 15, th.primary, 'center', 600);
+        ui.text(ctx, '看视频，解锁「' + tm.name + '」主题', W / 2, y + 25, 15, th.primary, 'center', 600);
       }
     },
   };

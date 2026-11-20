@@ -79,20 +79,16 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await tap('home-settings', 500);
   await shot('11_设置');
   await tap('set-look', 500);
-  ok((await scene()) === 'look', '设置 → 外观页');
-  await tap('look-paper-rice', 150);
-  await tap('look-tex-hand', 300);
-  await shot('11b_外观_宣纸手写纸');
-  let set = await ev(() => window.__store.data.settings);
-  ok(set.paper === 'rice' && set.texture === 'hand', '外观：换成宣纸 + 手写纸');
-  await tap('look-theme-mint', 300);
-  ok((await ev(() => window.__store.data.settings.theme)) === 'morning', '没解锁的配色点了不换（提示去结算页解锁）');
+  ok((await scene()) === 'look', '设置 → 主题页');
+  await shot('11b_主题页');
+  await tap('look-theme-notebook', 300);
+  ok((await ev(() => window.__store.data.settings.theme)) === 'notebook', '主题：换成「手写本」');
+  await tap('look-theme-wood', 300);
+  ok((await ev(() => window.__store.data.settings.theme)) === 'notebook', '没解锁的主题点了不换（提示去结算页解锁）');
+  ok((await ev(() => Object.keys(window.__store.data.settings).join(','))).indexOf('texture') < 0, '没有单独的颜色、质地选项');
   await tap('hdr-back', 400);
-  ok((await scene()) === 'home', '外观页返回首页');
-  await tap('home-settings', 500);
-  await tap('set-hatch', 200);
-  ok((await ev(() => window.__store.data.settings.hatch)) === true, '设置里打开「排除辅助线」');
-  await tap('set-done', 400);
+  ok((await scene()) === 'home', '主题页返回首页');
+  await ev(() => { window.__store.data.settings.theme = 'paper'; });
 
   // ---------- 4. 解四档难度（真点击）----------
   const G = {
@@ -128,10 +124,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   let b = await G.board();
   const given = b.vals.findIndex((v) => v);
   await click(await G.cell(given), 200);
-  await shot('14_点一格_排除辅助线开着');
-  await ev(() => { window.__store.data.settings.hatch = false; window.__store.data.settings.paper = 'cream'; window.__store.data.settings.texture = 'grain'; });
-  await click(await G.cell(given), 200);
-  await shot('14b_点一格_辅助线关_纸纹');
+  await shot('14_点一格_高亮同行同列同宫和相同数字');
   // 填错一次
   const e0 = b.vals.findIndex((v) => !v);
   await click(await G.cell(e0), 40);
@@ -193,9 +186,9 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   // 结算页广告：解锁配色
   await tap('res-theme', 300);
   await page.waitForTimeout(3700);
-  ok((await ev(() => window.__store.data.themes.mint)) === true, '结算页看视频解锁「薄荷」配色');
-  await shot('23_换上薄荷配色');
-  await ev(() => { window.__store.data.settings.theme = 'morning'; window.__store.save(); });
+  ok((await ev(() => window.__store.data.themes.wood)) === true, '结算页看视频解锁「原木」主题');
+  await shot('23_换上原木主题');
+  await ev(() => { window.__store.data.settings.theme = 'paper'; window.__store.save(); });
 
   // 简单、中等、困难：结算页「再来一局」→ 从首页选
   for (const [ti, name] of [[1, '简单'], [2, '中等'], [3, '困难']]) {

@@ -284,7 +284,6 @@ module.exports = function (app) {
         selected: b.selected, sameHighlight: store.data.settings.sameHighlight,
         hintCells: hint ? hint.cells : null,
         pops: fx.pops, rings: fx.rings, flash: fx.flash, shake: fx.shake, now: t,
-        texture: app.texture(), dark: app.isDark(), hatch: store.data.settings.hatch,
       }, app.dpr);
       if (paused) {
         ui.fillRR(ctx, geo.x, geo.y, geo.size, geo.size, 10, th.board);

@@ -11,14 +11,21 @@ const data = Object.assign({
   stats: S.TIERS.map(blankStats),
   daily: {}, // '2026-11-20': { time, score }
   lessons: {}, // 'rules': true
-  themes: { morning: true, night: true },
+  themes: {},
   current: null, // 正在玩的那一局（board.js 的对象）
   seen: { tutorial: false },
   next: [0, 0, 0, 0, 0, 0], // 每档下一题从题库第几题开始
 }, P.load(KEY) || {});
 // 老存档缺的字段补上（设置要逐项补，不然老存档会把新加的开关整个盖掉）
-const SETTINGS = { mistakeLimit: true, autoNotes: true, sameHighlight: true, hatch: false, showTimer: true, sound: true, vibrate: true, theme: 'morning', paper: 'cream', texture: 'grain' };
+const SETTINGS = { mistakeLimit: true, autoNotes: true, sameHighlight: true, showTimer: true, sound: true, vibrate: true, theme: 'paper' };
 data.settings = Object.assign({}, SETTINGS, data.settings || {});
+// 0.1 / 0.2 的老主题名换成新的；免费主题一定在
+const OLD_THEME = { morning: 'paper', night: 'chalk', mint: 'paper', apricot: 'paper', lilac: 'paper' };
+if (OLD_THEME[data.settings.theme]) data.settings.theme = OLD_THEME[data.settings.theme];
+delete data.settings.paper; delete data.settings.texture; delete data.settings.hatch;
+data.themes = data.themes || {};
+C.THEMES.forEach((t) => { if (t.free) data.themes[t.id] = true; });
+if (!C.THEMES.some((t) => t.id === data.settings.theme)) data.settings.theme = 'paper';
 data.stats = S.TIERS.map((_, i) => Object.assign(blankStats(), (data.stats || [])[i] || {}));
 
 function save() { P.save(KEY, data); }

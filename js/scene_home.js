@@ -31,7 +31,7 @@ module.exports = function (app) {
       const ch = 96;
       const pd = ui.button({ id: 'home-daily', x: 16, y, w: W - 32, h: ch, onTap: () => app.go('daily') });
       ui.card(ctx, 16, y, W - 32, ch, 18, th);
-      if (pd) ui.fillRR(ctx, 16, y, W - 32, ch, 18, th.rel);
+      if (pd) ui.fillRR(ctx, 16, y, W - 32, ch, 18, (th.pageDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'));
       ui.icons.calendar(ctx, 46, y + 32, 26, th.primary);
       ui.text(ctx, '每日挑战', 68, y + 32, 17, th.text, 'left', 600);
       ui.text(ctx, (d.getMonth() + 1) + '月' + d.getDate() + '日 · ' + S.TIERS[pick.tier].name + (doneToday ? ' · 已完成 ✓' : ''), 32, y + 66, 13, doneToday ? th.ok : th.sub);
@@ -49,7 +49,9 @@ module.exports = function (app) {
         ui.fillRR(ctx, 16, y, W - 32, bh, 18, th.primary);
         ui.text(ctx, '继续游戏', W / 2, y + 23, 18, th.primaryText, 'center', 600);
         const label = (cur.mode === 'daily' ? '每日挑战 · ' : '') + S.TIERS[cur.tier].name + ' · ' + app.fmt(cur.elapsed);
-        ui.text(ctx, label, W / 2, y + 44, 12, 'rgba(255,255,255,0.8)', 'center');
+        ctx.globalAlpha = 0.8;
+        ui.text(ctx, label, W / 2, y + 44, 12, th.primaryText, 'center');
+        ctx.globalAlpha = 1;
         ctx.restore();
         y += bh + 12;
         ui.pill(ctx, th, 'home-new', 16, y, W - 32, 54, '新游戏', () => app.difficultySheet(), 'card');
@@ -71,7 +73,7 @@ module.exports = function (app) {
         const x = 16 + (i % 2) * (tw + gap), ty = y + Math.floor(i / 2) * (tH + gap);
         const p = ui.button({ id: 'home-' + tl.id, x, y: ty, w: tw, h: tH, onTap: () => app.go(tl.id) });
         ui.card(ctx, x, ty, tw, tH, 16, th);
-        if (p) ui.fillRR(ctx, x, ty, tw, tH, 16, th.rel);
+        if (p) ui.fillRR(ctx, x, ty, tw, tH, 16, (th.pageDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'));
         ui.icons[tl.icon](ctx, x + 30, ty + tH / 2, 26, th.primary);
         ui.text(ctx, tl.label, x + 54, ty + tH / 2 - 10, 16, th.text, 'left', 600);
         ui.text(ctx, tl.sub, x + 54, ty + tH / 2 + 12, 12, th.sub);

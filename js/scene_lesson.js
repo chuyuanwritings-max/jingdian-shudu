@@ -20,7 +20,7 @@ module.exports = function (app) {
         const h = 72;
         const on = ui.button({ id: 'lesson-' + i, x: 16, y, w: W - 32, h, onTap: () => app.go('lesson', { index: i }) });
         ui.card(ctx, 16, y, W - 32, h, 16, th);
-        if (on) ui.fillRR(ctx, 16, y, W - 32, h, 16, th.rel);
+        if (on) ui.fillRR(ctx, 16, y, W - 32, h, 16, (th.pageDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'));
         ctx.beginPath(); ctx.arc(52, y + h / 2, 18, 0, Math.PI * 2); ctx.fillStyle = done ? th.ok : th.soft; ctx.fill();
         if (done) ui.icons.check(ctx, 52, y + h / 2, 20, '#FFFFFF');
         else ui.text(ctx, String(i + 1), 52, y + h / 2, 16, th.primary, 'center', 700);
@@ -195,7 +195,6 @@ module.exports = function (app) {
         vals, given: lesson.given, notes: lesson.notes, wrong: () => false,
         selected: lesson.sel, sameHighlight: true, focus: st.focus,
         rays: showRays ? st.rays : null, mark: st.mark, pops: lesson.fx.pops, rings: lesson.fx.rings, shake: lesson.fx.shake, now: t,
-        texture: app.texture(), dark: app.isDark(),
       }, app.dpr);
 
       // 底部：练习步 = 工具 + 数字键；演示步 = 「下一步」

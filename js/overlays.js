@@ -69,7 +69,6 @@ module.exports = function (app) {
     ['mistakeLimit', '错 3 次算输', '关掉就不限次数'],
     ['autoNotes', '自动擦笔记', '填对一个数，同行同列同宫的这个笔记擦掉'],
     ['sameHighlight', '高亮相同数字', ''],
-    ['hatch', '排除辅助线', '选中一个数，把它不能放的空格打上斜线'],
     ['showTimer', '显示计时', ''],
     ['sound', '声音', ''],
     ['vibrate', '震动', ''],
@@ -104,14 +103,12 @@ module.exports = function (app) {
         if (sub) ui.text(ctx, sub, 24, ry + 36, 12, th.sub);
         toggle(ctx, app.W - 72, ry + rowH / 2 - 14, set[key] !== false, th);
       });
-      // 外观：配色、背景颜色、质地（单独一页，能实时预览）
+      // 主题（颜色 + 质地一整套，单独一页，能实时预览）
       const ly = y + 54 + rowH * TOGGLES.length + 4;
       const on = ui.button({ id: 'set-look', x: 16, y: ly, w: app.W - 32, h: 52, onTap: () => { app.pop(); app.go('look', { back: back || { name: app.sceneName } }); } });
       ui.fillRR(ctx, 16, ly, app.W - 32, 52, 14, on ? th.sel : th.soft);
-      ui.text(ctx, '外观', 32, ly + 26, 16, th.text, 'left', 600);
-      const paper = Paper.paperOf(set.paper), tex = Paper.TEXTURES.find((x) => x.id === set.texture) || Paper.TEXTURES[0];
-      const tm = C.THEMES.find((x) => x.id === set.theme) || C.THEMES[0];
-      ui.text(ctx, tm.name + ' · ' + (tm.id === 'night' ? '深色' : paper.name) + ' · ' + tex.name, app.W - 52, ly + 26, 13, th.sub, 'right');
+      ui.text(ctx, '主题', 32, ly + 26, 16, th.text, 'left', 600);
+      ui.text(ctx, th.name, app.W - 52, ly + 26, 14, th.sub, 'right');
       ui.icons.chevron(ctx, app.W - 36, ly + 26, 18, th.faint);
       ui.pill(ctx, th, 'set-done', 16, ly + 62, app.W - 32, 48, '完成', () => app.pop(), 'primary');
     },

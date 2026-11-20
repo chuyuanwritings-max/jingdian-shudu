@@ -24,24 +24,12 @@ if (env.capsule) {
 app.headerH = HEADER_H;
 app.bottom = app.H - Math.max(env.safeBottom, 0);
 
-// 当前配色 = 主题（数字、高亮的颜色）+ 纸张（背景颜色）。夜间主题不换纸色，只叠质地
-let thCache = { key: '', th: null };
+// 当前主题（颜色 + 质地一整套）
 Object.defineProperty(app, 'th', {
-  get() {
-    const s = store.data.settings;
-    const key = s.theme + '|' + s.paper;
-    if (thCache.key !== key) {
-      const base = C.THEMES.find((t) => t.id === s.theme) || C.THEMES[0];
-      const paper = Paper.paperOf(s.paper);
-      thCache = { key, th: base.id === 'night' ? base : Object.assign({}, base, { bg: paper.bg, board: paper.board, card: paper.board }) };
-    }
-    return thCache.th;
-  },
+  get() { return C.THEMES.find((t) => t.id === store.data.settings.theme) || C.THEMES[0]; },
 });
-app.isDark = () => store.data.settings.theme === 'night';
-app.texture = () => store.data.settings.texture;
-// 卡片也铺上同样的质地
-ui.setTexture((ctx, x, y, w, h) => Paper.fill(ctx, app.texture(), app.dpr, app.isDark(), x, y, w, h));
+// 卡片也铺上这个主题的质地
+ui.setTexture((ctx, x, y, w, h) => Paper.fill(ctx, app.th.cardTexture, app.dpr, !!app.th.pageDark, x, y, w, h));
 
 // ---------- 动静 ----------
 app.redraw = () => { app.dirty = true; };
@@ -111,7 +99,7 @@ function render(t) {
   ctx.globalAlpha = 1;
   ctx.fillStyle = th.bg;
   ctx.fillRect(0, 0, app.W, app.H);
-  Paper.fill(ctx, app.texture(), app.dpr, app.isDark(), 0, 0, app.W, app.H);
+  Paper.fill(ctx, th.texture, app.dpr, !!th.pageDark, 0, 0, app.W, app.H);
   ui.beginFrame();
   // 换场景：淡入 + 轻轻上移 8 像素
   const p = Math.min(1, (t - (app.sceneT0 || 0)) / 220);
