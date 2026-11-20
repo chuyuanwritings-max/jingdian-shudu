@@ -20,7 +20,8 @@ module.exports = function (app) {
   let L = null; // 布局
   let hintBelow = true;
 
-  const resetFx = () => { fx = { pops: {}, rings: [], flash: [], shake: null, floats: [] }; };
+  const resetFx = () => { fx = { pops: {}, rings: [], flash: [], shake: null, floats: [], hops: {}, keyDone: {}, confetti: [] }; };
+  let party = null; // 通关庆祝：{ t0, k }
 
   function layout() {
     const W = app.W;
@@ -97,31 +98,100 @@ module.exports = function (app) {
     hint = null;
     fx.pops[k] = t;
     fx.rings.push({ k, t0: t });
-    if (r.gain) fx.floats.push({ k, t0: t, text: '+' + r.gain });
-    app.sound('place');
-    // 填满一行 / 列 / 宫：从这一格往两边扫一道光
+    if (r.gain) fx.floats.push({ k, t0: t + 120, text: '+' + r.gain });
+    app.sound('tile');
+    // 填满一行 / 列 / 宫：从这一格往两边一格格跳一下、亮一下（等方块落稳再开始）
     r.units.forEach((u) => {
       S.UNITS[u].forEach((x) => {
         const d = Math.abs(S.ROW(x) - S.ROW(k)) + Math.abs(S.COL(x) - S.COL(k));
-        fx.flash.push({ k: x, t0: t + 60 + d * 45, dur: 420 });
+        fx.flash.push({ k: x, t0: t + 220 + d * 45, dur: 420 });
+        if (x !== k) fx.hops[x] = t + 220 + d * 45;
       });
     });
-    if (r.units.length) { setTimeout(() => app.sound('unit'), 60); app.buzz('medium'); }
-    if (r.digitDone) {
-      for (let x = 0; x < 81; x++) if (b.vals[x] === v) fx.flash.push({ k: x, t0: t + 120, dur: 600, color: app.th.gold, alpha: 0.4 });
-      setTimeout(() => app.sound('digit'), 140);
+    if (r.units.length && !r.win) { setTimeout(() => app.sound('unit'), 220); setTimeout(() => app.buzz('medium'), 220); }
+    if (r.digitDone && !r.win) {
+      for (let x = 0; x < 81; x++) if (b.vals[x] === v) { fx.flash.push({ k: x, t0: t + 300, dur: 600, color: app.th.gold, alpha: 0.4 }); fx.hops[x] = t + 300; }
+      fx.keyDone[v] = t + 300;
+      setTimeout(() => app.sound('digit'), 300);
     }
     app.animate(1200);
     if (r.win) onWin(t);
   }
+  // 通关：从最后一格往外一圈圈波浪点亮、每格跳一下 → 两门彩纸炮 + 顶上撒彩纸 → 「完成！」→ 结算。约 2.8 秒，点一下跳过
+  const PARTY_MS = 2800;
   function onWin(t) {
     winAt = t;
+    const last = b.selected;
     b.selected = -1;
-    for (let x = 0; x < 81; x++) fx.flash.push({ k: x, t0: t + 300 + (S.ROW(x) + S.COL(x)) * 40, dur: 500, alpha: 0.6 });
-    setTimeout(() => app.sound('win'), 300);
-    app.animate(2000);
     store.recordWin(b);
-    setTimeout(() => app.go('result', { board: b }), 1500);
+    party = { t0: t, k: last };
+    for (let x = 0; x < 81; x++) {
+      const d = Math.hypot(S.ROW(x) - S.ROW(last), S.COL(x) - S.COL(last));
+      fx.flash.push({ k: x, t0: t + 250 + d * 70, dur: 520, alpha: 0.65 });
+      fx.hops[x] = t + 250 + d * 70;
+    }
+    setTimeout(() => { app.sound('fanfare'); app.buzz('heavy'); }, 250);
+    setTimeout(() => { if (party) { burst(); app.sound('confetti'); app.buzz('medium'); } }, 750);
+    setTimeout(() => endParty(), PARTY_MS);
+  }
+  function endParty() {
+    if (!party) return;
+    party = null;
+    app.go('result', { board: b });
+  }
+  // 彩纸：左下、右下两门炮往上斜着打，再从顶上飘一阵
+  function burst() {
+    const th = app.th, W = app.W;
+    const colors = [th.primary, th.gold, th.ok, th.wrong, th.glow, (th.tileB || [th.user])[0]];
+    const rnd = Math.random;
+    const add = (x, y, vx, vy) => fx.confetti.push({ x, y, vx, vy, rot: rnd() * 6, vr: (rnd() - 0.5) * 14, w: 5 + rnd() * 5, h: 8 + rnd() * 6, c: colors[(rnd() * colors.length) | 0], ph: rnd() * 6, round: rnd() < 0.25 });
+    for (let i = 0; i < 70; i++) {
+      const sp = 650 + rnd() * 550, a = (-62 - rnd() * 22) * Math.PI / 180;
+      add(-10, app.H * 0.78, Math.cos(a) * sp, Math.sin(a) * sp);
+      add(W + 10, app.H * 0.78, -Math.cos(a) * sp, Math.sin(a) * sp);
+    }
+    for (let i = 0; i < 50; i++) add(rnd() * W, -20 - rnd() * 200, (rnd() - 0.5) * 80, 60 + rnd() * 120);
+  }
+  function stepConfetti(dt) {
+    const s = dt / 1000;
+    for (const p of fx.confetti) {
+      p.vy += 900 * s;
+      p.vx *= Math.pow(0.35, s);
+      p.vy *= Math.pow(0.55, s);
+      p.x += (p.vx + Math.sin(p.ph + p.y / 40) * 30) * s;
+      p.y += p.vy * s;
+      p.rot += p.vr * s;
+    }
+    fx.confetti = fx.confetti.filter((p) => p.y < app.H + 40);
+  }
+  function drawParty(ctx, th, t) {
+    for (const p of fx.confetti) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.scale(1, Math.abs(Math.cos(p.rot * 1.3)) * 0.8 + 0.2); // 翻转时变窄，像纸片在转
+      ctx.fillStyle = p.c;
+      if (p.round) { ctx.beginPath(); ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2); ctx.fill(); }
+      else ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+    // 「完成！」大字：0.9 秒时弹出来
+    const e = t - party.t0 - 900;
+    if (e > 0) {
+      const p = Math.min(1, e / 380);
+      const s = ui.ease.back(p);
+      const cy = geo.y + geo.size / 2;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, p * 1.5);
+      ctx.translate(app.W / 2, cy);
+      ctx.scale(s, s);
+      ui.fillRR(ctx, -110, -46, 220, 92, 28, th.card);
+      ui.rr(ctx, -110, -46, 220, 92, 28); ctx.strokeStyle = th.gold; ctx.lineWidth = 3; ctx.stroke();
+      ui.text(ctx, '完成！', 0, -6, 38, th.text, 'center', 800);
+      ui.text(ctx, app.fmt(b.elapsed) + ' · ' + b.score + ' 分', 0, 28, 14, th.sub, 'center', 600);
+      ctx.restore();
+    }
+    ui.text(ctx, '点一下继续', app.W / 2, app.bottom - 22, 12, th.sub, 'center');
   }
   function showLost() {
     app.sound('lose');
@@ -218,6 +288,20 @@ module.exports = function (app) {
         ui.fillRR(ctx, x + 2, opts.y + 2, keyW - 4, opts.h - 4, 12, th.soft);
         ctx.globalAlpha = 1;
       }
+      const da = opts.doneAt && opts.doneAt[v] ? app.now - opts.doneAt[v] : -1;
+      if (da >= 0 && da < 900) {
+        const p = da / 900, cx = x + keyW / 2, cy = opts.y + opts.h / 2 - 6;
+        ctx.globalAlpha = 1 - p;
+        ctx.strokeStyle = th.gold; ctx.lineWidth = 3 * (1 - p) + 1;
+        ctx.beginPath(); ctx.arc(cx, cy, 12 + ui.ease.out(p) * 22, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+        const s = 0.6 + 0.4 * ui.ease.back(Math.min(1, p * 2.5));
+        ctx.save(); ctx.translate(cx, cy); ctx.scale(s, s);
+        ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fillStyle = th.gold; ctx.fill();
+        ui.icons.check(ctx, 0, 0, 18, '#FFFFFF', 2.6);
+        ctx.restore();
+        continue;
+      }
       const color = done || opts.disabled ? th.faint : opts.noteMode ? th.note : th.primary;
       ui.text(ctx, String(v), x + keyW / 2, opts.y + opts.h / 2 - (left !== null ? 6 : 0), opts.noteMode ? 26 : 32, color, 'center', opts.noteMode ? 400 : 400);
       if (left !== null && !done) ui.text(ctx, String(left), x + keyW / 2, opts.y + opts.h - 11, 10, th.faint, 'center');
@@ -250,13 +334,14 @@ module.exports = function (app) {
   app.scenes.play = {
     enter(args) {
       b = args.board;
-      noteMode = false; paused = false; hint = null; winAt = 0;
+      noteMode = false; paused = false; hint = null; winAt = 0; party = null;
       resetFx();
       layout();
     },
     leave() { persist(); },
     onHide() { if (b && !b.done && !winAt) { paused = true; persist(); app.redraw(); } },
     update(dt, t) {
+      if (fx && fx.confetti.length) stepConfetti(dt);
       if (!b || paused || winAt || b.lost || app.overlays.length) return;
       b.elapsed += dt;
       const sec = Math.floor(b.elapsed / 1000);
@@ -264,7 +349,7 @@ module.exports = function (app) {
       saveTimer += dt;
       if (saveTimer > 3000) { saveTimer = 0; persist(); }
     },
-    live: (t) => !!hint && t - hint.t0 < 400,
+    live: (t) => !!party || (!!hint && t - hint.t0 < 400),
     draw(ctx, t) {
       const th = app.th;
       const tierName = S.TIERS[b.tier].name;
@@ -283,7 +368,7 @@ module.exports = function (app) {
         vals: b.vals, given: b.given, notes: b.notes, wrong: (k) => Board.isWrong(b, k),
         selected: b.selected, sameHighlight: store.data.settings.sameHighlight,
         hintCells: hint ? hint.cells : null,
-        pops: fx.pops, rings: fx.rings, flash: fx.flash, shake: fx.shake, now: t,
+        pops: fx.pops, rings: fx.rings, flash: fx.flash, shake: fx.shake, hops: fx.hops, now: t, tileStyle: store.data.settings.tileStyle,
       }, app.dpr);
       if (paused) {
         ui.fillRR(ctx, geo.x, geo.y, geo.size, geo.size, 10, th.board);
@@ -294,6 +379,7 @@ module.exports = function (app) {
       // 加分飘字
       fx.floats = fx.floats.filter((f) => t - f.t0 < 800);
       for (const f of fx.floats) {
+        if (t < f.t0) continue;
         const p = (t - f.t0) / 800, r = DB.cellRect(geo, f.k);
         ctx.globalAlpha = p < 0.7 ? 1 : (1 - p) / 0.3;
         ui.text(ctx, f.text, r.x + r.s / 2, r.y - 6 - ui.ease.out(p) * 26, 14, th.primary, 'center', 700);
@@ -308,8 +394,12 @@ module.exports = function (app) {
         { id: 'note', label: '笔记', icon: 'pencil', active: noteMode, badge: { text: noteMode ? '开' : '关', color: noteMode ? th.primary : th.faint }, onTap: () => tool('note') },
         { id: 'hint', label: '提示', icon: 'bulb', badge: hintBadge, onTap: () => tool('hint') },
       ]);
-      app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode });
+      app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone });
       if (hint) drawHintCard(ctx, th, t);
+      if (party) {
+        drawParty(ctx, th, t);
+        ui.button({ id: 'party-skip', x: 0, y: 0, w: app.W, h: app.H, onTap: endParty }); // 点一下跳过
+      }
     },
   };
 

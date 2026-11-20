@@ -172,50 +172,58 @@ module.exports = { create, input, erase, undo, findHint, fillHint, revive, count
 __def("js/config.js", function (module, exports, require) {
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.3';
+const VERSION = '0.4';
 
 // 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
 // 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
+// tileA / tileB 自己填的数字方块 [面, 厚边, 数字]：A 象牙块（浅色块 + 彩色字）、B 彩色块（主题色块 + 浅色字），先给 Cc 选
 // texture 页面质地 · boardTexture 棋盘质地 · cardTexture 卡片质地 · pageDark / boardDark 底色深不深（决定颗粒用深色还是浅色）· hand 棋盘线像手画
 const THEMES = [
   {
     id: 'paper', name: '晨光纸', free: true, texture: 'grain', boardTexture: 'grain', cardTexture: 'grain', hand: false,
+    tileA: ['#FFFDF8', '#D6CDBC', '#2E64C8'], tileB: ['#3A6FD6', '#24499A', '#FFFFFF'],
     bg: '#EFEBE2', card: '#FAF7F0', board: '#FAF7F0', text: '#2A2F38', sub: '#868B94', faint: '#BDB8AE',
     given: '#2A2F38', user: '#2E64C8', wrong: '#D8473F', note: '#6E7380', lineBold: '#4A4F58', lineThin: '#DCD6CA',
     primary: '#2E64C8', primaryText: '#FFFFFF', soft: '#E3E7EF', sel: '#C9D7F2', glow: '#7FA6EE', gold: '#D9A13A', shadow: 'rgba(60,50,30,0.08)', ok: '#3A9A66',
   },
   {
     id: 'notebook', name: '手写本', free: true, texture: 'notebook', boardTexture: 'hand', cardTexture: 'hand', hand: true,
+    tileA: ['#FFFEF6', '#D3C7AC', '#2647A8'], tileB: ['#3459BD', '#213C85', '#FFFFFF'],
     bg: '#F3EEDD', card: '#FBF7EA', board: '#FBF7EA', text: '#3A3530', sub: '#857C70', faint: '#C2B8A6',
     given: '#3A3530', user: '#2647A8', wrong: '#C8372D', note: '#7A7368', lineBold: '#5A5249', lineThin: '#D6CCB8',
     primary: '#2F55B8', primaryText: '#FFFFFF', soft: '#E6E5E6', sel: '#CDD3E6', glow: '#8AA4E8', gold: '#C9952E', shadow: 'rgba(70,55,30,0.08)', ok: '#3E8E5C',
   },
   {
     id: 'chalk', name: '黑板', free: true, texture: 'chalk', boardTexture: 'chalk', cardTexture: 'chalk', hand: true, pageDark: true, boardDark: true,
+    tileA: ['#42564D', '#18221E', '#F3D46B'], tileB: ['#F1D46F', '#A88A2E', '#22302A'],
     bg: '#22302A', card: '#2B3A33', board: '#2B3A33', text: '#EEF0EA', sub: '#A3B0A8', faint: '#5A6B62',
     given: '#F2F2EC', user: '#F3D46B', wrong: '#FF8F85', note: '#C3CEC7', lineBold: '#D7DED9', lineThin: '#4B5C54',
     primary: '#F3D46B', primaryText: '#22302A', soft: '#384941', sel: '#4C5E55', glow: '#FFF0A8', gold: '#F3D46B', shadow: 'rgba(0,0,0,0.3)', ok: '#93DAA2',
   },
   {
     id: 'wood', name: '原木', free: false, texture: 'wood', boardTexture: 'woodLight', cardTexture: 'wood', hand: false, pageDark: true,
+    tileA: ['#F7E8CB', '#B38A55', '#1C6466'], tileB: ['#8A5932', '#4F321B', '#FBEBD2'],
     bg: '#5B3D26', card: '#6A4830', board: '#ECD6B0', text: '#F7EBD8', sub: '#D2B896', faint: '#8F6E50',
     given: '#3A2512', user: '#1C6466', wrong: '#C8352A', note: '#6E5236', lineBold: '#5A3B20', lineThin: '#CFB38C',
     primary: '#E3A75A', primaryText: '#3A2512', soft: '#7B573A', sel: '#8E6847', glow: '#FFD08A', gold: '#F2B84B', shadow: 'rgba(0,0,0,0.28)', ok: '#79C47F',
   },
   {
     id: 'ink', name: '宣纸水墨', free: false, texture: 'rice', boardTexture: 'rice', cardTexture: 'rice', hand: true,
+    tileA: ['#FCF7EC', '#C9BA98', '#2B4A6F'], tileB: ['#A3302A', '#661B17', '#FBF4E6'],
     bg: '#E8DFCB', card: '#F4EDDC', board: '#F4EDDC', text: '#2A2622', sub: '#7E7466', faint: '#BFB39C',
     given: '#1E1B18', user: '#2B4A6F', wrong: '#B8322A', note: '#6D6255', lineBold: '#2E2A26', lineThin: '#D2C6AD',
     primary: '#9E2B25', primaryText: '#FBF4E6', soft: '#E9DCC8', sel: '#E2C9B5', glow: '#D9876F', gold: '#B8862E', shadow: 'rgba(60,40,20,0.09)', ok: '#4E8A5E',
   },
   {
     id: 'kraft', name: '牛皮纸', free: false, texture: 'kraft', boardTexture: 'kraft', cardTexture: 'kraft', hand: false,
+    tileA: ['#EEDDBF', '#A58254', '#1F3E73'], tileB: ['#4B341F', '#22170C', '#F3E6D0'],
     bg: '#C3A078', card: '#D6BA92', board: '#DCC39C', text: '#2E2116', sub: '#5C4733', faint: '#957657',
     given: '#2E2116', user: '#1F3E73', wrong: '#A3241B', note: '#5B4632', lineBold: '#3E2C1C', lineThin: '#B79570',
     primary: '#46301D', primaryText: '#F3E6D0', soft: '#CBAA80', sel: '#BB976B', glow: '#F5D9A8', gold: '#8A5A16', shadow: 'rgba(50,30,10,0.14)', ok: '#3F7A44',
   },
   {
     id: 'metal', name: '拉丝金属', free: false, texture: 'metal', boardTexture: 'metal', cardTexture: 'metal', hand: false,
+    tileA: ['#F6F8FA', '#A3AAB4', '#1F5FBF'], tileB: ['#323C49', '#141920', '#F2F4F6'],
     bg: '#C5CAD0', card: '#DADEE2', board: '#E3E6E9', text: '#1E2329', sub: '#58606B', faint: '#9AA1AA',
     given: '#1E2329', user: '#1F5FBF', wrong: '#D23C3C', note: '#4F5761', lineBold: '#363D46', lineThin: '#B4BAC2',
     primary: '#2B3440', primaryText: '#F2F4F6', soft: '#CCD1D7', sel: '#B9C0C8', glow: '#8FB8FF', gold: '#B8862A', shadow: 'rgba(20,25,30,0.16)', ok: '#3A8F5E',
@@ -343,6 +351,41 @@ function linesLayer(geo, th, dpr, hand) {
   return c;
 }
 
+// 数字方块：影子（两层半透明，不用模糊，省电）→ 厚边 → 面 → 顶上一条高光 → 数字。
+// 刚放下的那 0.32 秒：从上面大一点落下（影子由远变近），落地压扁一下再弹回。
+function tile(ctx, th, m, cx, cy, cs, v, wrong, p0, t, same) {
+  const style = m.tileStyle === 'B' ? 'B' : 'A';
+  const pal = th[style === 'B' ? 'tileB' : 'tileA'] || ['#FFFFFF', '#CCCCCC', th.user];
+  let body = pal[0], edge = pal[1], ink = pal[2];
+  if (wrong) {
+    if (style === 'B') { body = th.wrong; edge = Paper.rgba('#000000', 0.35); ink = '#FFFFFF'; }
+    else { body = th.boardDark ? '#5A3434' : '#FCE6E3'; edge = th.boardDark ? '#2A1616' : '#E2B2AC'; ink = th.wrong; }
+  }
+  const inset = Math.max(2.5, cs * 0.07), thick = Math.max(2, cs * 0.06);
+  let lift = 0, sx = 1, sy = 1;
+  if (p0) {
+    const e = t - p0;
+    if (e >= 0 && e < 150) { const q = e / 150; lift = 12 * (1 - q * q); sx = sy = 1.22 - 0.22 * q * q; }
+    else if (e >= 150 && e < 330) { const q = (e - 150) / 180; const b = Math.sin(q * Math.PI) * (1 - q); sx = 1 + 0.09 * b; sy = 1 - 0.11 * b; }
+  }
+  const w = cs - inset * 2, h = cs - inset * 2 - thick;
+  const x0 = cx + cs / 2, yb = cy + inset + h + thick; // 方块底边中点：压扁、放大都以它为准
+  // 影子：离地越高越淡、越偏
+  const sh = Math.min(1, lift / 12);
+  ui.fillRR(ctx, cx + inset + 1 + sh * 3, cy + inset + thick + 1.5 + sh * 5, w, h, 6, 'rgba(0,0,0,' + (0.16 - sh * 0.08).toFixed(3) + ')');
+  ui.fillRR(ctx, cx + inset + 0.5, cy + inset + thick + 0.5 + sh * 2, w, h, 6, 'rgba(0,0,0,' + (0.1 - sh * 0.06).toFixed(3) + ')');
+  ctx.save();
+  ctx.translate(x0, yb - lift);
+  ctx.scale(sx, sy);
+  ctx.translate(-x0, -yb);
+  ui.fillRR(ctx, cx + inset, cy + inset + thick, w, h, 6, edge);
+  ui.fillRR(ctx, cx + inset, cy + inset, w, h, 6, body);
+  ui.fillRR(ctx, cx + inset + 3, cy + inset + 1.5, w - 6, Math.max(1.5, cs * 0.045), 1, style === 'B' || th.boardDark ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.85)');
+  if (same) { ui.rr(ctx, cx + inset - 1, cy + inset - 1, w + 2, h + thick + 2, 7); ctx.strokeStyle = th.primary; ctx.lineWidth = 2; ctx.stroke(); }
+  ui.text(ctx, String(v), x0, cy + inset + h / 2 + 1, Math.round(cs * 0.54), ink, 'center', style === 'B' ? 600 : 500);
+  ctx.restore();
+}
+
 function cellRect(geo, k) {
   const cs = geo.size / 9;
   return { x: geo.x + S.COL(k) * cs, y: geo.y + S.ROW(k) * cs, s: cs };
@@ -413,19 +456,22 @@ function draw(ctx, th, geo, m, dpr) {
       const p = (t - m.shake.t0) / 320;
       if (p >= 0 && p < 1) ox = Math.sin(p * Math.PI * 6) * 4 * (1 - p);
     }
-    if (v) {
-      let sc = 1;
-      const p0 = m.pops && m.pops[k];
-      if (p0) {
-        const p = (t - p0) / 220;
-        if (p >= 0 && p < 1) sc = 1 + 0.28 * Math.sin(p * Math.PI) * (1 - p * 0.3);
-      }
-      const color = m.given[k] ? th.given : m.wrong && m.wrong(k) ? th.wrong : th.user;
+    // 跳一下（填满一行 / 列 / 宫、通关的波浪）
+    let oy = 0;
+    const h0 = m.hops && m.hops[k];
+    if (h0) {
+      const p = (t - h0) / 340;
+      if (p >= 0 && p < 1) oy = -6 * Math.sin(p * Math.PI) * (1 - p * 0.4);
+    }
+    if (v && m.given[k]) {
+      // 题目原有的数字：印在纸上，平的
       ctx.save();
-      ctx.translate(r.x + cs / 2 + ox, r.y + cs / 2 + 1);
-      if (sc !== 1) ctx.scale(sc, sc);
-      ui.text(ctx, String(v), 0, 0, fs, color, 'center', m.given[k] ? 500 : 400);
+      ctx.translate(r.x + cs / 2 + ox, r.y + cs / 2 + 1 + oy);
+      ui.text(ctx, String(v), 0, 0, fs, th.given, 'center', 500);
       ctx.restore();
+    } else if (v) {
+      // 自己填的数字：一块有厚度的方块
+      tile(ctx, th, m, r.x + ox, r.y + oy, cs, v, m.wrong && m.wrong(k), m.pops && m.pops[k], t, digit === v && m.sameHighlight !== false && k !== sel);
     } else if (m.notes && m.notes[k]) {
       for (let d = 1; d <= 9; d++) {
         if (!(m.notes[k] & S.bit(d))) continue;
@@ -474,7 +520,12 @@ function cellAt(geo, x, y) {
   return Math.floor((y - geo.y) / cs) * 9 + Math.floor((x - geo.x) / cs);
 }
 
-module.exports = { draw, cellRect, cellAt };
+// 主题页的样式示范：单独画一块方块
+function sampleTile(ctx, th, style, x, y, cs, v, p0, t) {
+  tile(ctx, th, { tileStyle: style }, x, y, cs, v, false, p0, t, false);
+}
+
+module.exports = { draw, cellRect, cellAt, sampleTile };
 
 });
 __def("js/main.js", function (module, exports, require) {
@@ -1500,7 +1551,7 @@ module.exports = function (app) {
       DB.draw(ctx, th, geo, {
         vals, given: lesson.given, notes: lesson.notes, wrong: () => false,
         selected: lesson.sel, sameHighlight: true, focus: st.focus,
-        rays: showRays ? st.rays : null, mark: st.mark, pops: lesson.fx.pops, rings: lesson.fx.rings, shake: lesson.fx.shake, now: t,
+        rays: showRays ? st.rays : null, mark: st.mark, pops: lesson.fx.pops, rings: lesson.fx.rings, shake: lesson.fx.shake, now: t, tileStyle: store.data.settings.tileStyle,
       }, app.dpr);
 
       // 底部：练习步 = 工具 + 数字键；演示步 = 「下一步」
@@ -1580,6 +1631,7 @@ const T = require('./tutorial.js');
 
 module.exports = function (app) {
   let back = null;
+  let sampleT = 0;
   // 预览盘：像一道真题，选中一格、有笔记、有自己填的数
   const vals = T.SOL.map((v, k) => ((k * 7) % 5 < 2 ? v : 0));
   const given = vals.map(Boolean);
@@ -1638,9 +1690,9 @@ module.exports = function (app) {
       let y = app.headerY + app.headerH + 8;
       // 主题方块：一行 4 个，两行
       const cols = 4, gap = 10, tw = (W - 32 - gap * (cols - 1)) / cols, tH = tw * 1.18;
-      const gridH = tH * 2 + gap + 30;
+      const gridH = tH * 2 + gap + 30 + 96; // 下面还有一行「数字方块」A / B
       const size = Math.max(135, Math.min(270, Math.floor((app.bottom - 16 - y - gridH - 20) / 9) * 9));
-      DB.draw(ctx, th, { x: Math.round((W - size) / 2), y, size }, { vals, given, notes, wrong: () => false, selected: 30, sameHighlight: set.sameHighlight, now: app.now }, app.dpr);
+      DB.draw(ctx, th, { x: Math.round((W - size) / 2), y, size }, { vals, given, notes, wrong: () => false, selected: 30, sameHighlight: set.sameHighlight, now: app.now, tileStyle: set.tileStyle }, app.dpr);
       y += size + 20;
       const unlocked = C.THEMES.filter((t) => store.data.themes[t.id]).length;
       ui.text(ctx, '已解锁 ' + unlocked + ' / ' + C.THEMES.length + ' · 结算页看视频解锁更多', W / 2, y, 12, th.sub, 'center');
@@ -1656,6 +1708,22 @@ module.exports = function (app) {
         if (on) { ctx.translate(x + tw / 2, ty + tH / 2); ctx.scale(0.95, 0.95); ctx.translate(-x - tw / 2, -ty - tH / 2); }
         themeTile(ctx, th, tm, x, ty, tw, tH, set.theme === tm.id, !have);
         ctx.restore();
+      });
+      // 数字方块样式：先给 Cc 选，选定后这一行拿掉
+      y += tH * 2 + gap + 18;
+      ui.text(ctx, '数字方块（先选一种，选定后这一行会拿掉）', 20, y, 13, th.sub, 'left', 600);
+      y += 14;
+      const bw = (W - 32 - 12) / 2, bh = 62;
+      [['A', '象牙块'], ['B', '彩色块']].forEach(([id, name], i) => {
+        const x = 16 + i * (bw + 12);
+        const on = ui.button({ id: 'look-tile-' + id, x, y, w: bw, h: bh, onTap: () => { set.tileStyle = id; store.save(); app.sound('tile'); app.animate(400); sampleT = app.now; } });
+        ui.card(ctx, x, y, bw, bh, 14, th);
+        if (set.tileStyle === id) { ui.rr(ctx, x, y, bw, bh, 14); ctx.strokeStyle = th.primary; ctx.lineWidth = 3; ctx.stroke(); }
+        // 示范：两块方块
+        const cs = 44;
+        DB.sampleTile(ctx, th, id, x + 12, y + (bh - cs) / 2, cs, 7, set.tileStyle === id ? sampleT : 0, app.now);
+        DB.sampleTile(ctx, th, id, x + 12 + cs + 2, y + (bh - cs) / 2, cs, 4, 0, app.now);
+        ui.text(ctx, id + ' ' + name, x + 12 + cs * 2 + 14, y + bh / 2, 15, on ? th.primary : th.text, 'left', 600);
       });
     },
   };
@@ -1980,7 +2048,8 @@ module.exports = function (app) {
   let L = null; // 布局
   let hintBelow = true;
 
-  const resetFx = () => { fx = { pops: {}, rings: [], flash: [], shake: null, floats: [] }; };
+  const resetFx = () => { fx = { pops: {}, rings: [], flash: [], shake: null, floats: [], hops: {}, keyDone: {}, confetti: [] }; };
+  let party = null; // 通关庆祝：{ t0, k }
 
   function layout() {
     const W = app.W;
@@ -2057,31 +2126,100 @@ module.exports = function (app) {
     hint = null;
     fx.pops[k] = t;
     fx.rings.push({ k, t0: t });
-    if (r.gain) fx.floats.push({ k, t0: t, text: '+' + r.gain });
-    app.sound('place');
-    // 填满一行 / 列 / 宫：从这一格往两边扫一道光
+    if (r.gain) fx.floats.push({ k, t0: t + 120, text: '+' + r.gain });
+    app.sound('tile');
+    // 填满一行 / 列 / 宫：从这一格往两边一格格跳一下、亮一下（等方块落稳再开始）
     r.units.forEach((u) => {
       S.UNITS[u].forEach((x) => {
         const d = Math.abs(S.ROW(x) - S.ROW(k)) + Math.abs(S.COL(x) - S.COL(k));
-        fx.flash.push({ k: x, t0: t + 60 + d * 45, dur: 420 });
+        fx.flash.push({ k: x, t0: t + 220 + d * 45, dur: 420 });
+        if (x !== k) fx.hops[x] = t + 220 + d * 45;
       });
     });
-    if (r.units.length) { setTimeout(() => app.sound('unit'), 60); app.buzz('medium'); }
-    if (r.digitDone) {
-      for (let x = 0; x < 81; x++) if (b.vals[x] === v) fx.flash.push({ k: x, t0: t + 120, dur: 600, color: app.th.gold, alpha: 0.4 });
-      setTimeout(() => app.sound('digit'), 140);
+    if (r.units.length && !r.win) { setTimeout(() => app.sound('unit'), 220); setTimeout(() => app.buzz('medium'), 220); }
+    if (r.digitDone && !r.win) {
+      for (let x = 0; x < 81; x++) if (b.vals[x] === v) { fx.flash.push({ k: x, t0: t + 300, dur: 600, color: app.th.gold, alpha: 0.4 }); fx.hops[x] = t + 300; }
+      fx.keyDone[v] = t + 300;
+      setTimeout(() => app.sound('digit'), 300);
     }
     app.animate(1200);
     if (r.win) onWin(t);
   }
+  // 通关：从最后一格往外一圈圈波浪点亮、每格跳一下 → 两门彩纸炮 + 顶上撒彩纸 → 「完成！」→ 结算。约 2.8 秒，点一下跳过
+  const PARTY_MS = 2800;
   function onWin(t) {
     winAt = t;
+    const last = b.selected;
     b.selected = -1;
-    for (let x = 0; x < 81; x++) fx.flash.push({ k: x, t0: t + 300 + (S.ROW(x) + S.COL(x)) * 40, dur: 500, alpha: 0.6 });
-    setTimeout(() => app.sound('win'), 300);
-    app.animate(2000);
     store.recordWin(b);
-    setTimeout(() => app.go('result', { board: b }), 1500);
+    party = { t0: t, k: last };
+    for (let x = 0; x < 81; x++) {
+      const d = Math.hypot(S.ROW(x) - S.ROW(last), S.COL(x) - S.COL(last));
+      fx.flash.push({ k: x, t0: t + 250 + d * 70, dur: 520, alpha: 0.65 });
+      fx.hops[x] = t + 250 + d * 70;
+    }
+    setTimeout(() => { app.sound('fanfare'); app.buzz('heavy'); }, 250);
+    setTimeout(() => { if (party) { burst(); app.sound('confetti'); app.buzz('medium'); } }, 750);
+    setTimeout(() => endParty(), PARTY_MS);
+  }
+  function endParty() {
+    if (!party) return;
+    party = null;
+    app.go('result', { board: b });
+  }
+  // 彩纸：左下、右下两门炮往上斜着打，再从顶上飘一阵
+  function burst() {
+    const th = app.th, W = app.W;
+    const colors = [th.primary, th.gold, th.ok, th.wrong, th.glow, (th.tileB || [th.user])[0]];
+    const rnd = Math.random;
+    const add = (x, y, vx, vy) => fx.confetti.push({ x, y, vx, vy, rot: rnd() * 6, vr: (rnd() - 0.5) * 14, w: 5 + rnd() * 5, h: 8 + rnd() * 6, c: colors[(rnd() * colors.length) | 0], ph: rnd() * 6, round: rnd() < 0.25 });
+    for (let i = 0; i < 70; i++) {
+      const sp = 650 + rnd() * 550, a = (-62 - rnd() * 22) * Math.PI / 180;
+      add(-10, app.H * 0.78, Math.cos(a) * sp, Math.sin(a) * sp);
+      add(W + 10, app.H * 0.78, -Math.cos(a) * sp, Math.sin(a) * sp);
+    }
+    for (let i = 0; i < 50; i++) add(rnd() * W, -20 - rnd() * 200, (rnd() - 0.5) * 80, 60 + rnd() * 120);
+  }
+  function stepConfetti(dt) {
+    const s = dt / 1000;
+    for (const p of fx.confetti) {
+      p.vy += 900 * s;
+      p.vx *= Math.pow(0.35, s);
+      p.vy *= Math.pow(0.55, s);
+      p.x += (p.vx + Math.sin(p.ph + p.y / 40) * 30) * s;
+      p.y += p.vy * s;
+      p.rot += p.vr * s;
+    }
+    fx.confetti = fx.confetti.filter((p) => p.y < app.H + 40);
+  }
+  function drawParty(ctx, th, t) {
+    for (const p of fx.confetti) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.scale(1, Math.abs(Math.cos(p.rot * 1.3)) * 0.8 + 0.2); // 翻转时变窄，像纸片在转
+      ctx.fillStyle = p.c;
+      if (p.round) { ctx.beginPath(); ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2); ctx.fill(); }
+      else ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+    // 「完成！」大字：0.9 秒时弹出来
+    const e = t - party.t0 - 900;
+    if (e > 0) {
+      const p = Math.min(1, e / 380);
+      const s = ui.ease.back(p);
+      const cy = geo.y + geo.size / 2;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, p * 1.5);
+      ctx.translate(app.W / 2, cy);
+      ctx.scale(s, s);
+      ui.fillRR(ctx, -110, -46, 220, 92, 28, th.card);
+      ui.rr(ctx, -110, -46, 220, 92, 28); ctx.strokeStyle = th.gold; ctx.lineWidth = 3; ctx.stroke();
+      ui.text(ctx, '完成！', 0, -6, 38, th.text, 'center', 800);
+      ui.text(ctx, app.fmt(b.elapsed) + ' · ' + b.score + ' 分', 0, 28, 14, th.sub, 'center', 600);
+      ctx.restore();
+    }
+    ui.text(ctx, '点一下继续', app.W / 2, app.bottom - 22, 12, th.sub, 'center');
   }
   function showLost() {
     app.sound('lose');
@@ -2178,6 +2316,20 @@ module.exports = function (app) {
         ui.fillRR(ctx, x + 2, opts.y + 2, keyW - 4, opts.h - 4, 12, th.soft);
         ctx.globalAlpha = 1;
       }
+      const da = opts.doneAt && opts.doneAt[v] ? app.now - opts.doneAt[v] : -1;
+      if (da >= 0 && da < 900) {
+        const p = da / 900, cx = x + keyW / 2, cy = opts.y + opts.h / 2 - 6;
+        ctx.globalAlpha = 1 - p;
+        ctx.strokeStyle = th.gold; ctx.lineWidth = 3 * (1 - p) + 1;
+        ctx.beginPath(); ctx.arc(cx, cy, 12 + ui.ease.out(p) * 22, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+        const s = 0.6 + 0.4 * ui.ease.back(Math.min(1, p * 2.5));
+        ctx.save(); ctx.translate(cx, cy); ctx.scale(s, s);
+        ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fillStyle = th.gold; ctx.fill();
+        ui.icons.check(ctx, 0, 0, 18, '#FFFFFF', 2.6);
+        ctx.restore();
+        continue;
+      }
       const color = done || opts.disabled ? th.faint : opts.noteMode ? th.note : th.primary;
       ui.text(ctx, String(v), x + keyW / 2, opts.y + opts.h / 2 - (left !== null ? 6 : 0), opts.noteMode ? 26 : 32, color, 'center', opts.noteMode ? 400 : 400);
       if (left !== null && !done) ui.text(ctx, String(left), x + keyW / 2, opts.y + opts.h - 11, 10, th.faint, 'center');
@@ -2210,13 +2362,14 @@ module.exports = function (app) {
   app.scenes.play = {
     enter(args) {
       b = args.board;
-      noteMode = false; paused = false; hint = null; winAt = 0;
+      noteMode = false; paused = false; hint = null; winAt = 0; party = null;
       resetFx();
       layout();
     },
     leave() { persist(); },
     onHide() { if (b && !b.done && !winAt) { paused = true; persist(); app.redraw(); } },
     update(dt, t) {
+      if (fx && fx.confetti.length) stepConfetti(dt);
       if (!b || paused || winAt || b.lost || app.overlays.length) return;
       b.elapsed += dt;
       const sec = Math.floor(b.elapsed / 1000);
@@ -2224,7 +2377,7 @@ module.exports = function (app) {
       saveTimer += dt;
       if (saveTimer > 3000) { saveTimer = 0; persist(); }
     },
-    live: (t) => !!hint && t - hint.t0 < 400,
+    live: (t) => !!party || (!!hint && t - hint.t0 < 400),
     draw(ctx, t) {
       const th = app.th;
       const tierName = S.TIERS[b.tier].name;
@@ -2243,7 +2396,7 @@ module.exports = function (app) {
         vals: b.vals, given: b.given, notes: b.notes, wrong: (k) => Board.isWrong(b, k),
         selected: b.selected, sameHighlight: store.data.settings.sameHighlight,
         hintCells: hint ? hint.cells : null,
-        pops: fx.pops, rings: fx.rings, flash: fx.flash, shake: fx.shake, now: t,
+        pops: fx.pops, rings: fx.rings, flash: fx.flash, shake: fx.shake, hops: fx.hops, now: t, tileStyle: store.data.settings.tileStyle,
       }, app.dpr);
       if (paused) {
         ui.fillRR(ctx, geo.x, geo.y, geo.size, geo.size, 10, th.board);
@@ -2254,6 +2407,7 @@ module.exports = function (app) {
       // 加分飘字
       fx.floats = fx.floats.filter((f) => t - f.t0 < 800);
       for (const f of fx.floats) {
+        if (t < f.t0) continue;
         const p = (t - f.t0) / 800, r = DB.cellRect(geo, f.k);
         ctx.globalAlpha = p < 0.7 ? 1 : (1 - p) / 0.3;
         ui.text(ctx, f.text, r.x + r.s / 2, r.y - 6 - ui.ease.out(p) * 26, 14, th.primary, 'center', 700);
@@ -2268,8 +2422,12 @@ module.exports = function (app) {
         { id: 'note', label: '笔记', icon: 'pencil', active: noteMode, badge: { text: noteMode ? '开' : '关', color: noteMode ? th.primary : th.faint }, onTap: () => tool('note') },
         { id: 'hint', label: '提示', icon: 'bulb', badge: hintBadge, onTap: () => tool('hint') },
       ]);
-      app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode });
+      app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone });
       if (hint) drawHintCard(ctx, th, t);
+      if (party) {
+        drawParty(ctx, th, t);
+        ui.button({ id: 'party-skip', x: 0, y: 0, w: app.W, h: app.H, onTap: endParty }); // 点一下跳过
+      }
     },
   };
 
@@ -2303,7 +2461,17 @@ function seq(notes, step, voice, d) {
   };
 }
 
+// 白噪声（固定种子，每次合成一样）
+let ns = 12345;
+const noise = () => { ns = (ns * 16807) % 2147483647; return ns / 1073741823.5 - 1; };
+
 const RECIPES = {
+  // 数字方块落下：木块「嗒」——一下短促的敲击噪声 + 一个往下滑的低音
+  tile: { len: 0.16, f: (t) => noise() * env(t, 0.0008, 0.006) * 0.55 + sin(260 - 500 * t, t) * env(t, 0.002, 0.035) * 0.55 + mallet(1046, t, 0.05) * 0.18 },
+  // 通关：一段上扬的琶音，最后落在一个长和弦上（约 2 秒）
+  fanfare: { len: 2.4, f: (t) => seq([523, 659, 784, 1047, 784, 1047, 1319], 0.085, bell, 0.35)(t) * 0.42 + (t > 0.62 ? (bell(523, t - 0.62, 0.9) + bell(659, t - 0.62, 0.9) + bell(784, t - 0.62, 0.9) + bell(1047, t - 0.62, 0.9)) * 0.16 : 0) + sin(130, t) * env(t, 0.01, 0.6) * 0.18 },
+  // 彩纸炮：「噗」一声 + 沙沙
+  confetti: { len: 0.7, f: (t) => noise() * (env(t, 0.002, 0.03) * 0.5 + env(t, 0.05, 0.25) * 0.12) + sin(90 - 60 * t, t) * env(t, 0.002, 0.06) * 0.4 },
   tap: { len: 0.06, f: (t) => sin(1400, t) * env(t, 0.001, 0.012) * 0.25 },           // 按钮
   select: { len: 0.05, f: (t) => sin(1800, t) * env(t, 0.001, 0.008) * 0.15 },        // 点格子
   place: { len: 0.35, f: (t) => mallet(784, t, 0.09) * 0.5 },                          // 填对
@@ -2355,7 +2523,7 @@ const data = Object.assign({
   next: [0, 0, 0, 0, 0, 0], // 每档下一题从题库第几题开始
 }, P.load(KEY) || {});
 // 老存档缺的字段补上（设置要逐项补，不然老存档会把新加的开关整个盖掉）
-const SETTINGS = { mistakeLimit: true, autoNotes: true, sameHighlight: true, showTimer: true, sound: true, vibrate: true, theme: 'paper' };
+const SETTINGS = { mistakeLimit: true, autoNotes: true, sameHighlight: true, showTimer: true, sound: true, vibrate: true, theme: 'paper', tileStyle: 'A' };
 data.settings = Object.assign({}, SETTINGS, data.settings || {});
 // 0.1 / 0.2 的老主题名换成新的；免费主题一定在
 const OLD_THEME = { morning: 'paper', night: 'chalk', mint: 'paper', apricot: 'paper', lilac: 'paper' };

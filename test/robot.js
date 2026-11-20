@@ -86,6 +86,10 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await tap('look-theme-wood', 300);
   ok((await ev(() => window.__store.data.settings.theme)) === 'notebook', '没解锁的主题点了不换（提示去结算页解锁）');
   ok((await ev(() => Object.keys(window.__store.data.settings).join(','))).indexOf('texture') < 0, '没有单独的颜色、质地选项');
+  await tap('look-tile-B', 300);
+  ok((await ev(() => window.__store.data.settings.tileStyle)) === 'B', '数字方块：切到 B 彩色块');
+  await shot('11c_主题页_彩色块');
+  await tap('look-tile-A', 300);
   await tap('hdr-back', 400);
   ok((await scene()) === 'home', '主题页返回首页');
   await ev(() => { window.__store.data.settings.theme = 'paper'; });
@@ -110,6 +114,9 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
       if (n === 10 && shotPrefix) { await page.waitForTimeout(150); await shot(shotPrefix + '_玩到一半'); }
       if ((await ev(() => window.__app.overlays.length)) > 0) break;
     }
+    // 通关庆祝约 2.8 秒；中途截一张
+    await page.waitForTimeout(1300);
+    if (shotPrefix) await shot(shotPrefix + '_通关庆祝');
     await page.waitForTimeout(1900);
     return scene();
   }

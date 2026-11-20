@@ -8,6 +8,7 @@ const T = require('./tutorial.js');
 
 module.exports = function (app) {
   let back = null;
+  let sampleT = 0;
   // 预览盘：像一道真题，选中一格、有笔记、有自己填的数
   const vals = T.SOL.map((v, k) => ((k * 7) % 5 < 2 ? v : 0));
   const given = vals.map(Boolean);
@@ -66,9 +67,9 @@ module.exports = function (app) {
       let y = app.headerY + app.headerH + 8;
       // 主题方块：一行 4 个，两行
       const cols = 4, gap = 10, tw = (W - 32 - gap * (cols - 1)) / cols, tH = tw * 1.18;
-      const gridH = tH * 2 + gap + 30;
+      const gridH = tH * 2 + gap + 30 + 96; // 下面还有一行「数字方块」A / B
       const size = Math.max(135, Math.min(270, Math.floor((app.bottom - 16 - y - gridH - 20) / 9) * 9));
-      DB.draw(ctx, th, { x: Math.round((W - size) / 2), y, size }, { vals, given, notes, wrong: () => false, selected: 30, sameHighlight: set.sameHighlight, now: app.now }, app.dpr);
+      DB.draw(ctx, th, { x: Math.round((W - size) / 2), y, size }, { vals, given, notes, wrong: () => false, selected: 30, sameHighlight: set.sameHighlight, now: app.now, tileStyle: set.tileStyle }, app.dpr);
       y += size + 20;
       const unlocked = C.THEMES.filter((t) => store.data.themes[t.id]).length;
       ui.text(ctx, '已解锁 ' + unlocked + ' / ' + C.THEMES.length + ' · 结算页看视频解锁更多', W / 2, y, 12, th.sub, 'center');
@@ -84,6 +85,22 @@ module.exports = function (app) {
         if (on) { ctx.translate(x + tw / 2, ty + tH / 2); ctx.scale(0.95, 0.95); ctx.translate(-x - tw / 2, -ty - tH / 2); }
         themeTile(ctx, th, tm, x, ty, tw, tH, set.theme === tm.id, !have);
         ctx.restore();
+      });
+      // 数字方块样式：先给 Cc 选，选定后这一行拿掉
+      y += tH * 2 + gap + 18;
+      ui.text(ctx, '数字方块（先选一种，选定后这一行会拿掉）', 20, y, 13, th.sub, 'left', 600);
+      y += 14;
+      const bw = (W - 32 - 12) / 2, bh = 62;
+      [['A', '象牙块'], ['B', '彩色块']].forEach(([id, name], i) => {
+        const x = 16 + i * (bw + 12);
+        const on = ui.button({ id: 'look-tile-' + id, x, y, w: bw, h: bh, onTap: () => { set.tileStyle = id; store.save(); app.sound('tile'); app.animate(400); sampleT = app.now; } });
+        ui.card(ctx, x, y, bw, bh, 14, th);
+        if (set.tileStyle === id) { ui.rr(ctx, x, y, bw, bh, 14); ctx.strokeStyle = th.primary; ctx.lineWidth = 3; ctx.stroke(); }
+        // 示范：两块方块
+        const cs = 44;
+        DB.sampleTile(ctx, th, id, x + 12, y + (bh - cs) / 2, cs, 7, set.tileStyle === id ? sampleT : 0, app.now);
+        DB.sampleTile(ctx, th, id, x + 12 + cs + 2, y + (bh - cs) / 2, cs, 4, 0, app.now);
+        ui.text(ctx, id + ' ' + name, x + 12 + cs * 2 + 14, y + bh / 2, 15, on ? th.primary : th.text, 'left', 600);
       });
     },
   };

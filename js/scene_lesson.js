@@ -194,7 +194,7 @@ module.exports = function (app) {
       DB.draw(ctx, th, geo, {
         vals, given: lesson.given, notes: lesson.notes, wrong: () => false,
         selected: lesson.sel, sameHighlight: true, focus: st.focus,
-        rays: showRays ? st.rays : null, mark: st.mark, pops: lesson.fx.pops, rings: lesson.fx.rings, shake: lesson.fx.shake, now: t,
+        rays: showRays ? st.rays : null, mark: st.mark, pops: lesson.fx.pops, rings: lesson.fx.rings, shake: lesson.fx.shake, now: t, tileStyle: store.data.settings.tileStyle,
       }, app.dpr);
 
       // 底部：练习步 = 工具 + 数字键；演示步 = 「下一步」

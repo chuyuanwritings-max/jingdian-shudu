@@ -81,6 +81,41 @@ function linesLayer(geo, th, dpr, hand) {
   return c;
 }
 
+// 数字方块：影子（两层半透明，不用模糊，省电）→ 厚边 → 面 → 顶上一条高光 → 数字。
+// 刚放下的那 0.32 秒：从上面大一点落下（影子由远变近），落地压扁一下再弹回。
+function tile(ctx, th, m, cx, cy, cs, v, wrong, p0, t, same) {
+  const style = m.tileStyle === 'B' ? 'B' : 'A';
+  const pal = th[style === 'B' ? 'tileB' : 'tileA'] || ['#FFFFFF', '#CCCCCC', th.user];
+  let body = pal[0], edge = pal[1], ink = pal[2];
+  if (wrong) {
+    if (style === 'B') { body = th.wrong; edge = Paper.rgba('#000000', 0.35); ink = '#FFFFFF'; }
+    else { body = th.boardDark ? '#5A3434' : '#FCE6E3'; edge = th.boardDark ? '#2A1616' : '#E2B2AC'; ink = th.wrong; }
+  }
+  const inset = Math.max(2.5, cs * 0.07), thick = Math.max(2, cs * 0.06);
+  let lift = 0, sx = 1, sy = 1;
+  if (p0) {
+    const e = t - p0;
+    if (e >= 0 && e < 150) { const q = e / 150; lift = 12 * (1 - q * q); sx = sy = 1.22 - 0.22 * q * q; }
+    else if (e >= 150 && e < 330) { const q = (e - 150) / 180; const b = Math.sin(q * Math.PI) * (1 - q); sx = 1 + 0.09 * b; sy = 1 - 0.11 * b; }
+  }
+  const w = cs - inset * 2, h = cs - inset * 2 - thick;
+  const x0 = cx + cs / 2, yb = cy + inset + h + thick; // 方块底边中点：压扁、放大都以它为准
+  // 影子：离地越高越淡、越偏
+  const sh = Math.min(1, lift / 12);
+  ui.fillRR(ctx, cx + inset + 1 + sh * 3, cy + inset + thick + 1.5 + sh * 5, w, h, 6, 'rgba(0,0,0,' + (0.16 - sh * 0.08).toFixed(3) + ')');
+  ui.fillRR(ctx, cx + inset + 0.5, cy + inset + thick + 0.5 + sh * 2, w, h, 6, 'rgba(0,0,0,' + (0.1 - sh * 0.06).toFixed(3) + ')');
+  ctx.save();
+  ctx.translate(x0, yb - lift);
+  ctx.scale(sx, sy);
+  ctx.translate(-x0, -yb);
+  ui.fillRR(ctx, cx + inset, cy + inset + thick, w, h, 6, edge);
+  ui.fillRR(ctx, cx + inset, cy + inset, w, h, 6, body);
+  ui.fillRR(ctx, cx + inset + 3, cy + inset + 1.5, w - 6, Math.max(1.5, cs * 0.045), 1, style === 'B' || th.boardDark ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.85)');
+  if (same) { ui.rr(ctx, cx + inset - 1, cy + inset - 1, w + 2, h + thick + 2, 7); ctx.strokeStyle = th.primary; ctx.lineWidth = 2; ctx.stroke(); }
+  ui.text(ctx, String(v), x0, cy + inset + h / 2 + 1, Math.round(cs * 0.54), ink, 'center', style === 'B' ? 600 : 500);
+  ctx.restore();
+}
+
 function cellRect(geo, k) {
   const cs = geo.size / 9;
   return { x: geo.x + S.COL(k) * cs, y: geo.y + S.ROW(k) * cs, s: cs };
@@ -151,19 +186,22 @@ function draw(ctx, th, geo, m, dpr) {
       const p = (t - m.shake.t0) / 320;
       if (p >= 0 && p < 1) ox = Math.sin(p * Math.PI * 6) * 4 * (1 - p);
     }
-    if (v) {
-      let sc = 1;
-      const p0 = m.pops && m.pops[k];
-      if (p0) {
-        const p = (t - p0) / 220;
-        if (p >= 0 && p < 1) sc = 1 + 0.28 * Math.sin(p * Math.PI) * (1 - p * 0.3);
-      }
-      const color = m.given[k] ? th.given : m.wrong && m.wrong(k) ? th.wrong : th.user;
+    // 跳一下（填满一行 / 列 / 宫、通关的波浪）
+    let oy = 0;
+    const h0 = m.hops && m.hops[k];
+    if (h0) {
+      const p = (t - h0) / 340;
+      if (p >= 0 && p < 1) oy = -6 * Math.sin(p * Math.PI) * (1 - p * 0.4);
+    }
+    if (v && m.given[k]) {
+      // 题目原有的数字：印在纸上，平的
       ctx.save();
-      ctx.translate(r.x + cs / 2 + ox, r.y + cs / 2 + 1);
-      if (sc !== 1) ctx.scale(sc, sc);
-      ui.text(ctx, String(v), 0, 0, fs, color, 'center', m.given[k] ? 500 : 400);
+      ctx.translate(r.x + cs / 2 + ox, r.y + cs / 2 + 1 + oy);
+      ui.text(ctx, String(v), 0, 0, fs, th.given, 'center', 500);
       ctx.restore();
+    } else if (v) {
+      // 自己填的数字：一块有厚度的方块
+      tile(ctx, th, m, r.x + ox, r.y + oy, cs, v, m.wrong && m.wrong(k), m.pops && m.pops[k], t, digit === v && m.sameHighlight !== false && k !== sel);
     } else if (m.notes && m.notes[k]) {
       for (let d = 1; d <= 9; d++) {
         if (!(m.notes[k] & S.bit(d))) continue;
@@ -212,4 +250,9 @@ function cellAt(geo, x, y) {
   return Math.floor((y - geo.y) / cs) * 9 + Math.floor((x - geo.x) / cs);
 }
 
-module.exports = { draw, cellRect, cellAt };
+// 主题页的样式示范：单独画一块方块
+function sampleTile(ctx, th, style, x, y, cs, v, p0, t) {
+  tile(ctx, th, { tileStyle: style }, x, y, cs, v, false, p0, t, false);
+}
+
+module.exports = { draw, cellRect, cellAt, sampleTile };
