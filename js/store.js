@@ -7,7 +7,7 @@ const KEY = 'jingdian-shudu-v1';
 const blankStats = () => ({ played: 0, won: 0, perfect: 0, best: 0, total: 0, streak: 0, bestStreak: 0, bestScore: 0 });
 
 const data = Object.assign({
-  settings: { mistakeLimit: true, autoNotes: true, sameHighlight: true, showTimer: true, sound: true, vibrate: true, theme: 'morning' },
+  settings: null,
   stats: S.TIERS.map(blankStats),
   daily: {}, // '2026-11-20': { time, score }
   lessons: {}, // 'rules': true
@@ -16,7 +16,9 @@ const data = Object.assign({
   seen: { tutorial: false },
   next: [0, 0, 0, 0, 0, 0], // 每档下一题从题库第几题开始
 }, P.load(KEY) || {});
-// 老存档缺的字段补上
+// 老存档缺的字段补上（设置要逐项补，不然老存档会把新加的开关整个盖掉）
+const SETTINGS = { mistakeLimit: true, autoNotes: true, sameHighlight: true, hatch: false, showTimer: true, sound: true, vibrate: true, theme: 'morning', paper: 'cream', texture: 'grain' };
+data.settings = Object.assign({}, SETTINGS, data.settings || {});
 data.stats = S.TIERS.map((_, i) => Object.assign(blankStats(), (data.stats || [])[i] || {}));
 
 function save() { P.save(KEY, data); }

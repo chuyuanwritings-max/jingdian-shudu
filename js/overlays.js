@@ -4,6 +4,7 @@ const ui = require('./ui.js');
 const C = require('./config.js');
 const S = require('./sudoku.js');
 const store = require('./store.js');
+const Paper = require('./paper.js');
 
 const fmt = (ms) => {
   const s = Math.floor(ms / 1000);
@@ -68,6 +69,7 @@ module.exports = function (app) {
     ['mistakeLimit', '错 3 次算输', '关掉就不限次数'],
     ['autoNotes', '自动擦笔记', '填对一个数，同行同列同宫的这个笔记擦掉'],
     ['sameHighlight', '高亮相同数字', ''],
+    ['hatch', '排除辅助线', '选中一个数，把它不能放的空格打上斜线'],
     ['showTimer', '显示计时', ''],
     ['sound', '声音', ''],
     ['vibrate', '震动', ''],
@@ -79,15 +81,15 @@ module.exports = function (app) {
     ctx.arc(on ? x + 34 : x + 14, y + 14, 11, 0, Math.PI * 2);
     ctx.fill();
   }
-  app.settingsSheet = () => app.push({
+  app.settingsSheet = (back) => app.push({
     onBackdrop: () => app.pop(),
     draw(ctx, t, p) {
-      const th = app.th, rowH = 52;
-      const h = 60 + rowH * TOGGLES.length + 110 + 70 + (app.H - app.bottom);
+      const th = app.th, rowH = 50;
+      const h = 56 + rowH * TOGGLES.length + 62 + 66 + (app.H - app.bottom);
       const y = sheet(ctx, p, h, '设置');
       const set = store.data.settings;
       TOGGLES.forEach(([key, label, sub], i) => {
-        const ry = y + 58 + i * rowH;
+        const ry = y + 54 + i * rowH;
         ui.button({
           id: 'set-' + key, x: 0, y: ry, w: app.W, h: rowH,
           onTap: () => {
@@ -98,34 +100,20 @@ module.exports = function (app) {
             app.sound('tap');
           },
         });
-        ui.text(ctx, label, 24, ry + (sub ? 18 : rowH / 2), 16, th.text, 'left', 500);
-        if (sub) ui.text(ctx, sub, 24, ry + 38, 12, th.sub);
+        ui.text(ctx, label, 24, ry + (sub ? 17 : rowH / 2), 16, th.text, 'left', 500);
+        if (sub) ui.text(ctx, sub, 24, ry + 36, 12, th.sub);
         toggle(ctx, app.W - 72, ry + rowH / 2 - 14, set[key] !== false, th);
       });
-      // 配色
-      const ty = y + 58 + rowH * TOGGLES.length + 8;
-      ui.text(ctx, '配色', 24, ty + 10, 16, th.text, 'left', 500);
-      const n = C.THEMES.length, gap = (app.W - 48) / n;
-      C.THEMES.forEach((tm, i) => {
-        const cx = 24 + gap * (i + 0.5), cy = ty + 56;
-        const have = store.data.themes[tm.id];
-        ui.button({
-          id: 'theme-' + tm.id, x: cx - gap / 2, y: cy - 30, w: gap, h: 70,
-          onTap: () => {
-            if (!have) { app.toast('完成一局后，在结算页看视频解锁'); return; }
-            set.theme = tm.id; store.save(); app.sound('tap');
-          },
-        });
-        ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI * 2); ctx.fillStyle = tm.bg; ctx.fill();
-        ctx.beginPath(); ctx.arc(cx, cy, 20, Math.PI * 0.75, Math.PI * 1.75); ctx.fillStyle = tm.primary; ctx.fill();
-        ctx.lineWidth = set.theme === tm.id ? 3 : 1;
-        ctx.strokeStyle = set.theme === tm.id ? th.primary : th.lineThin;
-        ctx.beginPath(); ctx.arc(cx, cy, set.theme === tm.id ? 23 : 20, 0, Math.PI * 2); ctx.stroke();
-        if (!have) ui.icons.lock(ctx, cx, cy, 18, th.sub);
-        ui.text(ctx, tm.name, cx, cy + 34, 12, th.sub, 'center');
-      });
-      ui.pill(ctx, th, 'set-done', 16, ty + 106, app.W - 32, 48, '完成', () => app.pop(), 'primary');
-      ui.text(ctx, '版本 ' + C.VERSION, app.W / 2, ty + 166, 11, th.faint, 'center');
+      // 外观：配色、背景颜色、质地（单独一页，能实时预览）
+      const ly = y + 54 + rowH * TOGGLES.length + 4;
+      const on = ui.button({ id: 'set-look', x: 16, y: ly, w: app.W - 32, h: 52, onTap: () => { app.pop(); app.go('look', { back: back || { name: app.sceneName } }); } });
+      ui.fillRR(ctx, 16, ly, app.W - 32, 52, 14, on ? th.sel : th.soft);
+      ui.text(ctx, '外观', 32, ly + 26, 16, th.text, 'left', 600);
+      const paper = Paper.paperOf(set.paper), tex = Paper.TEXTURES.find((x) => x.id === set.texture) || Paper.TEXTURES[0];
+      const tm = C.THEMES.find((x) => x.id === set.theme) || C.THEMES[0];
+      ui.text(ctx, tm.name + ' · ' + (tm.id === 'night' ? '深色' : paper.name) + ' · ' + tex.name, app.W - 52, ly + 26, 13, th.sub, 'right');
+      ui.icons.chevron(ctx, app.W - 36, ly + 26, 18, th.faint);
+      ui.pill(ctx, th, 'set-done', 16, ly + 62, app.W - 32, 48, '完成', () => app.pop(), 'primary');
     },
   });
 

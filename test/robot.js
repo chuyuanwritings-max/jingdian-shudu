@@ -78,6 +78,20 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await tap('hdr-back', 400);
   await tap('home-settings', 500);
   await shot('11_设置');
+  await tap('set-look', 500);
+  ok((await scene()) === 'look', '设置 → 外观页');
+  await tap('look-paper-rice', 150);
+  await tap('look-tex-hand', 300);
+  await shot('11b_外观_宣纸手写纸');
+  let set = await ev(() => window.__store.data.settings);
+  ok(set.paper === 'rice' && set.texture === 'hand', '外观：换成宣纸 + 手写纸');
+  await tap('look-theme-mint', 300);
+  ok((await ev(() => window.__store.data.settings.theme)) === 'morning', '没解锁的配色点了不换（提示去结算页解锁）');
+  await tap('hdr-back', 400);
+  ok((await scene()) === 'home', '外观页返回首页');
+  await tap('home-settings', 500);
+  await tap('set-hatch', 200);
+  ok((await ev(() => window.__store.data.settings.hatch)) === true, '设置里打开「排除辅助线」');
   await tap('set-done', 400);
 
   // ---------- 4. 解四档难度（真点击）----------
@@ -114,7 +128,10 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   let b = await G.board();
   const given = b.vals.findIndex((v) => v);
   await click(await G.cell(given), 200);
-  await shot('14_点一格_高亮同行同列同宫和相同数字');
+  await shot('14_点一格_排除辅助线开着');
+  await ev(() => { window.__store.data.settings.hatch = false; window.__store.data.settings.paper = 'cream'; window.__store.data.settings.texture = 'grain'; });
+  await click(await G.cell(given), 200);
+  await shot('14b_点一格_辅助线关_纸纹');
   // 填错一次
   const e0 = b.vals.findIndex((v) => !v);
   await click(await G.cell(e0), 40);

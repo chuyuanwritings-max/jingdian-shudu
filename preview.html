@@ -172,7 +172,7 @@ module.exports = { create, input, erase, undo, findHint, fillHint, revive, count
 __def("js/config.js", function (module, exports, require) {
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.1';
+const VERSION = '0.2';
 
 // 配色主题（点子卡「清晨纸面」画风参数卡）。前两套免费，后三套在结算页看视频解锁。
 const THEMES = [
@@ -223,6 +223,7 @@ const SCORE = {
 
 // 速度倍数：离上一次填对过了 dt 秒，这一格的分数乘几
 // 现在：5 秒内 ×2，之后一直线降到 30 秒时 ×1，再慢也是 ×1
+// TODO(human)：这是计分的「性格」——想鼓励快手，还是让慢慢想的人也不吃亏？改下面三行的数就行
 function speedMultiplier(dt) {
   if (dt <= 5) return 2;
   if (dt >= 30) return 1;
@@ -252,20 +253,61 @@ module.exports = { VERSION, THEMES, SCORE, speedMultiplier, RULES, ADS, DAILY_TI
 __def("js/drawboard.js", function (module, exports, require) {
 // 画棋盘：局内和教学共用。
 // m = { vals[81], given[81], notes[81], wrong(k)→bool, selected, selDigit, sameHighlight,
-//       focus: 亮着的格（其余变淡）| null, rays, strike, mark, hintCells, pops:{k:t0}, shake:{k,t0}, flash:{k:t0}, now }
+//       focus: 亮着的格（其余变淡）| null, rays, strike, mark, hintCells, pops:{k:t0}, shake:{k,t0}, flash:{k:t0}, now,
+//       texture, dark, hatch: 排除辅助线 }
 const S = require('./sudoku.js');
 const ui = require('./ui.js');
 const P = require('./platform.js');
+const Paper = require('./paper.js');
 
 let cache = null; // 宫线、格线画在离屏画布上，每帧贴一次
-function linesLayer(geo, th, dpr) {
-  const key = geo.size + '|' + th.id + '|' + dpr;
+// 手写纸：一条线拆成很多小段，每段轻轻抖一下，粗细也不匀
+function handLine(g, x1, y1, x2, y2, w, seed) {
+  let s = seed;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  const len = Math.hypot(x2 - x1, y2 - y1), n = Math.max(2, Math.round(len / 14));
+  const nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
+  let px = x1, py = y1, off = 0;
+  for (let i = 1; i <= n; i++) {
+    off = off * 0.6 + (rnd() - 0.5) * 0.9;
+    const t = i / n;
+    const x = x1 + (x2 - x1) * t + nx * off, y = y1 + (y2 - y1) * t + ny * off;
+    g.lineWidth = w * (0.75 + rnd() * 0.5);
+    g.beginPath(); g.moveTo(px, py); g.lineTo(x, y); g.stroke();
+    px = x; py = y;
+  }
+}
+function linesLayer(geo, th, dpr, hand) {
+  const key = geo.size + '|' + th.lineBold + th.lineThin + '|' + dpr + '|' + (hand ? 1 : 0);
   if (cache && cache.key === key) return cache.canvas;
   const px = Math.ceil(geo.size * dpr) + 4;
   const c = P.makeCanvas(px, px);
   const g = c.getContext('2d');
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const cs = geo.size / 9, o = 1;
+  if (hand) {
+    g.lineCap = 'round';
+    g.strokeStyle = th.lineThin;
+    for (let i = 1; i < 9; i++) {
+      if (i % 3 === 0) continue;
+      const p = o + i * cs;
+      handLine(g, p, o + 2, p, o + geo.size - 2, 1, 101 + i);
+      handLine(g, o + 2, p, o + geo.size - 2, p, 1, 201 + i);
+    }
+    g.strokeStyle = th.lineBold;
+    g.globalAlpha = 0.85;
+    for (let i = 3; i < 9; i += 3) {
+      const p = o + i * cs;
+      handLine(g, p, o + 1, p, o + geo.size - 1, 2, 301 + i);
+      handLine(g, o + 1, p, o + geo.size - 1, p, 2, 401 + i);
+    }
+    handLine(g, o, o, o + geo.size, o, 2.2, 501);
+    handLine(g, o + geo.size, o, o + geo.size, o + geo.size, 2.2, 502);
+    handLine(g, o + geo.size, o + geo.size, o, o + geo.size, 2.2, 503);
+    handLine(g, o, o + geo.size, o, o, 2.2, 504);
+    cache = { key, canvas: c };
+    return c;
+  }
   g.strokeStyle = th.lineThin;
   g.lineWidth = 1;
   g.beginPath();
@@ -304,6 +346,9 @@ function draw(ctx, th, geo, m, dpr) {
   ctx.save();
   ui.rr(ctx, geo.x, geo.y, geo.size, geo.size, 10);
   ctx.clip();
+  if (m.texture) Paper.fill(ctx, m.texture, dpr, m.dark, geo.x, geo.y, geo.size, geo.size);
+  // 高亮用主色的半透明，纸色和质地都透得出来
+  const HL = { rel: Paper.rgba(th.primary, m.dark ? 0.14 : 0.09), same: Paper.rgba(th.primary, m.dark ? 0.26 : 0.17), sel: Paper.rgba(th.primary, m.dark ? 0.4 : 0.27), hint: Paper.rgba(th.gold, 0.2) };
 
   // 高亮：同行同列同宫（浅）→ 相同数字（中）→ 选中格（深）
   const sel = m.selected;
@@ -311,16 +356,37 @@ function draw(ctx, th, geo, m, dpr) {
   const digit = m.selDigit || selVal;
   for (let k = 0; k < 81; k++) {
     let bg = null;
-    if (sel >= 0 && k !== sel && (S.ROW(k) === S.ROW(sel) || S.COL(k) === S.COL(sel) || S.BOX(k) === S.BOX(sel))) bg = th.rel;
-    if (m.sameHighlight !== false && digit && m.vals[k] === digit && k !== sel) bg = th.same;
-    if (m.hintCells && m.hintCells.indexOf(k) >= 0) bg = th.soft;
-    if (k === sel) bg = th.sel;
-    if (m.wrong && m.wrong(k) && k === sel) bg = th.sel;
+    if (sel >= 0 && k !== sel && (S.ROW(k) === S.ROW(sel) || S.COL(k) === S.COL(sel) || S.BOX(k) === S.BOX(sel))) bg = HL.rel;
+    if (m.sameHighlight !== false && digit && m.vals[k] === digit && k !== sel) bg = HL.same;
+    if (m.hintCells && m.hintCells.indexOf(k) >= 0) bg = HL.hint;
+    if (k === sel) bg = HL.sel;
     if (bg) {
       const r = cellRect(geo, k);
       ctx.fillStyle = bg;
       ctx.fillRect(r.x, r.y, cs + 0.5, cs + 0.5);
     }
+  }
+  if (m.hatch && digit) {
+    const cover = new Array(81).fill(false);
+    for (let k = 0; k < 81; k++) {
+      if (m.vals[k] !== digit || (m.wrong && m.wrong(k))) continue;
+      for (const u of S.UNITS_OF[k]) for (const x of S.UNITS[u]) cover[x] = true;
+    }
+    ctx.save();
+    ctx.strokeStyle = Paper.rgba(m.dark ? '#FFFFFF' : '#1F2A3A', m.dark ? 0.16 : 0.13);
+    ctx.lineWidth = 1;
+    for (let k = 0; k < 81; k++) {
+      if (!cover[k] || m.vals[k]) continue;
+      const r = cellRect(geo, k);
+      ctx.fillStyle = Paper.rgba(m.dark ? '#FFFFFF' : '#1F2A3A', 0.045);
+      ctx.fillRect(r.x, r.y, cs + 0.5, cs + 0.5);
+      ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, cs, cs); ctx.clip();
+      ctx.beginPath();
+      for (let d = -cs; d < cs; d += cs / 4) { ctx.moveTo(r.x + d, r.y + cs); ctx.lineTo(r.x + d + cs, r.y); }
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
   }
   // 教学：被「划掉」的行列（淡红带）
   if (m.rays) {
@@ -345,7 +411,7 @@ function draw(ctx, th, geo, m, dpr) {
     }
   }
 
-  ctx.drawImage(linesLayer(geo, th, dpr), 0, 0, Math.ceil(geo.size * dpr) + 4, Math.ceil(geo.size * dpr) + 4, geo.x - 1, geo.y - 1, (Math.ceil(geo.size * dpr) + 4) / dpr, (Math.ceil(geo.size * dpr) + 4) / dpr);
+  ctx.drawImage(linesLayer(geo, th, dpr, m.texture === 'hand'), 0, 0, Math.ceil(geo.size * dpr) + 4, Math.ceil(geo.size * dpr) + 4, geo.x - 1, geo.y - 1, (Math.ceil(geo.size * dpr) + 4) / dpr, (Math.ceil(geo.size * dpr) + 4) / dpr);
 
   // 数字和笔记
   const fs = Math.round(cs * 0.6), ns = Math.max(9, Math.round(cs * 0.27));
@@ -429,6 +495,7 @@ const P = require('./platform.js');
 const ui = require('./ui.js');
 const C = require('./config.js');
 const store = require('./store.js');
+const Paper = require('./paper.js');
 
 const app = {
   scenes: {}, scene: null, sceneName: '', overlays: [], toasts: [],
@@ -449,9 +516,24 @@ if (env.capsule) {
 app.headerH = HEADER_H;
 app.bottom = app.H - Math.max(env.safeBottom, 0);
 
+// 当前配色 = 主题（数字、高亮的颜色）+ 纸张（背景颜色）。夜间主题不换纸色，只叠质地
+let thCache = { key: '', th: null };
 Object.defineProperty(app, 'th', {
-  get() { return C.THEMES.find((t) => t.id === store.data.settings.theme) || C.THEMES[0]; },
+  get() {
+    const s = store.data.settings;
+    const key = s.theme + '|' + s.paper;
+    if (thCache.key !== key) {
+      const base = C.THEMES.find((t) => t.id === s.theme) || C.THEMES[0];
+      const paper = Paper.paperOf(s.paper);
+      thCache = { key, th: base.id === 'night' ? base : Object.assign({}, base, { bg: paper.bg, board: paper.board, card: paper.board }) };
+    }
+    return thCache.th;
+  },
 });
+app.isDark = () => store.data.settings.theme === 'night';
+app.texture = () => store.data.settings.texture;
+// 卡片也铺上同样的质地
+ui.setTexture((ctx, x, y, w, h) => Paper.fill(ctx, app.texture(), app.dpr, app.isDark(), x, y, w, h));
 
 // ---------- 动静 ----------
 app.redraw = () => { app.dirty = true; };
@@ -521,6 +603,7 @@ function render(t) {
   ctx.globalAlpha = 1;
   ctx.fillStyle = th.bg;
   ctx.fillRect(0, 0, app.W, app.H);
+  Paper.fill(ctx, app.texture(), app.dpr, app.isDark(), 0, 0, app.W, app.H);
   ui.beginFrame();
   // 换场景：淡入 + 轻轻上移 8 像素
   const p = Math.min(1, (t - (app.sceneT0 || 0)) / 220);
@@ -589,6 +672,7 @@ require('./scene_play.js')(app);
 require('./scene_lesson.js')(app);
 require('./scene_pages.js')(app);
 require('./overlays.js')(app);
+require('./scene_look.js')(app);
 
 if (!store.data.seen.tutorial) app.go('lesson', { index: 0, firstRun: true });
 else app.go('home');
@@ -607,6 +691,7 @@ const ui = require('./ui.js');
 const C = require('./config.js');
 const S = require('./sudoku.js');
 const store = require('./store.js');
+const Paper = require('./paper.js');
 
 const fmt = (ms) => {
   const s = Math.floor(ms / 1000);
@@ -671,6 +756,7 @@ module.exports = function (app) {
     ['mistakeLimit', '错 3 次算输', '关掉就不限次数'],
     ['autoNotes', '自动擦笔记', '填对一个数，同行同列同宫的这个笔记擦掉'],
     ['sameHighlight', '高亮相同数字', ''],
+    ['hatch', '排除辅助线', '选中一个数，把它不能放的空格打上斜线'],
     ['showTimer', '显示计时', ''],
     ['sound', '声音', ''],
     ['vibrate', '震动', ''],
@@ -682,15 +768,15 @@ module.exports = function (app) {
     ctx.arc(on ? x + 34 : x + 14, y + 14, 11, 0, Math.PI * 2);
     ctx.fill();
   }
-  app.settingsSheet = () => app.push({
+  app.settingsSheet = (back) => app.push({
     onBackdrop: () => app.pop(),
     draw(ctx, t, p) {
-      const th = app.th, rowH = 52;
-      const h = 60 + rowH * TOGGLES.length + 110 + 70 + (app.H - app.bottom);
+      const th = app.th, rowH = 50;
+      const h = 56 + rowH * TOGGLES.length + 62 + 66 + (app.H - app.bottom);
       const y = sheet(ctx, p, h, '设置');
       const set = store.data.settings;
       TOGGLES.forEach(([key, label, sub], i) => {
-        const ry = y + 58 + i * rowH;
+        const ry = y + 54 + i * rowH;
         ui.button({
           id: 'set-' + key, x: 0, y: ry, w: app.W, h: rowH,
           onTap: () => {
@@ -701,34 +787,20 @@ module.exports = function (app) {
             app.sound('tap');
           },
         });
-        ui.text(ctx, label, 24, ry + (sub ? 18 : rowH / 2), 16, th.text, 'left', 500);
-        if (sub) ui.text(ctx, sub, 24, ry + 38, 12, th.sub);
+        ui.text(ctx, label, 24, ry + (sub ? 17 : rowH / 2), 16, th.text, 'left', 500);
+        if (sub) ui.text(ctx, sub, 24, ry + 36, 12, th.sub);
         toggle(ctx, app.W - 72, ry + rowH / 2 - 14, set[key] !== false, th);
       });
-      // 配色
-      const ty = y + 58 + rowH * TOGGLES.length + 8;
-      ui.text(ctx, '配色', 24, ty + 10, 16, th.text, 'left', 500);
-      const n = C.THEMES.length, gap = (app.W - 48) / n;
-      C.THEMES.forEach((tm, i) => {
-        const cx = 24 + gap * (i + 0.5), cy = ty + 56;
-        const have = store.data.themes[tm.id];
-        ui.button({
-          id: 'theme-' + tm.id, x: cx - gap / 2, y: cy - 30, w: gap, h: 70,
-          onTap: () => {
-            if (!have) { app.toast('完成一局后，在结算页看视频解锁'); return; }
-            set.theme = tm.id; store.save(); app.sound('tap');
-          },
-        });
-        ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI * 2); ctx.fillStyle = tm.bg; ctx.fill();
-        ctx.beginPath(); ctx.arc(cx, cy, 20, Math.PI * 0.75, Math.PI * 1.75); ctx.fillStyle = tm.primary; ctx.fill();
-        ctx.lineWidth = set.theme === tm.id ? 3 : 1;
-        ctx.strokeStyle = set.theme === tm.id ? th.primary : th.lineThin;
-        ctx.beginPath(); ctx.arc(cx, cy, set.theme === tm.id ? 23 : 20, 0, Math.PI * 2); ctx.stroke();
-        if (!have) ui.icons.lock(ctx, cx, cy, 18, th.sub);
-        ui.text(ctx, tm.name, cx, cy + 34, 12, th.sub, 'center');
-      });
-      ui.pill(ctx, th, 'set-done', 16, ty + 106, app.W - 32, 48, '完成', () => app.pop(), 'primary');
-      ui.text(ctx, '版本 ' + C.VERSION, app.W / 2, ty + 166, 11, th.faint, 'center');
+      // 外观：配色、背景颜色、质地（单独一页，能实时预览）
+      const ly = y + 54 + rowH * TOGGLES.length + 4;
+      const on = ui.button({ id: 'set-look', x: 16, y: ly, w: app.W - 32, h: 52, onTap: () => { app.pop(); app.go('look', { back: back || { name: app.sceneName } }); } });
+      ui.fillRR(ctx, 16, ly, app.W - 32, 52, 14, on ? th.sel : th.soft);
+      ui.text(ctx, '外观', 32, ly + 26, 16, th.text, 'left', 600);
+      const paper = Paper.paperOf(set.paper), tex = Paper.TEXTURES.find((x) => x.id === set.texture) || Paper.TEXTURES[0];
+      const tm = C.THEMES.find((x) => x.id === set.theme) || C.THEMES[0];
+      ui.text(ctx, tm.name + ' · ' + (tm.id === 'night' ? '深色' : paper.name) + ' · ' + tex.name, app.W - 52, ly + 26, 13, th.sub, 'right');
+      ui.icons.chevron(ctx, app.W - 36, ly + 26, 18, th.faint);
+      ui.pill(ctx, th, 'set-done', 16, ly + 62, app.W - 32, 48, '完成', () => app.pop(), 'primary');
     },
   });
 
@@ -799,6 +871,128 @@ module.exports = function (app) {
   app.sheet = sheet;
   app.modal = modal;
 };
+
+});
+__def("js/paper.js", function (module, exports, require) {
+// 纸张：背景颜色 × 质地，两样分开选（Cc 0.2：「白色背景稍微有一点晃眼……能不能像是手写纸的质感」）。
+// 质地是一块 256×256 的透明小图，画一次缓存起来，每帧铺满屏幕（十几次贴图，很便宜）。
+const P = require('./platform.js');
+
+// 背景颜色：页面底色 bg、棋盘和卡片的纸色 board。都避开纯白，不晃眼（纯白留一个给喜欢的人）
+const PAPERS = [
+  { id: 'cream', name: '米白', bg: '#F1EEE6', board: '#FBF9F3' },
+  { id: 'rice', name: '宣纸', bg: '#ECE3D0', board: '#F7F0E1' },
+  { id: 'green', name: '护眼绿', bg: '#E2EBDC', board: '#F0F5EC' },
+  { id: 'blue', name: '雾蓝', bg: '#E2E8F0', board: '#F0F3F7' },
+  { id: 'gray', name: '浅灰', bg: '#E7E7E9', board: '#F4F4F5' },
+  { id: 'pink', name: '樱粉', bg: '#F1E4E3', board: '#F9F1F0' },
+  { id: 'white', name: '纯白', bg: '#F6F4EF', board: '#FFFFFF' },
+];
+
+// 质地
+const TEXTURES = [
+  { id: 'flat', name: '纯色' },
+  { id: 'grain', name: '纸纹' },
+  { id: 'hand', name: '手写纸' }, // 纸纹 + 纤维 + 棋盘线像铅笔手画
+  { id: 'grid', name: '方格本' },
+  { id: 'linen', name: '布纹' },
+];
+
+const TILE = 256;
+const tiles = {};
+function rng(seed) {
+  let s = seed >>> 0 || 1;
+  return () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+}
+// dark：深色底上用浅色颗粒
+function tile(texture, dpr, dark) {
+  const key = texture + '|' + dpr + '|' + (dark ? 1 : 0);
+  if (key in tiles) return tiles[key];
+  if (texture === 'flat') { tiles[key] = null; return null; }
+  const c = P.makeCanvas(Math.round(TILE * dpr), Math.round(TILE * dpr));
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const r = rng(texture.length * 977 + 13);
+  const ink = dark ? '255,255,255' : '60,45,30';
+  // 颗粒：几千个很淡的小点
+  const speck = (n, a) => {
+    for (let i = 0; i < n; i++) {
+      g.fillStyle = 'rgba(' + ink + ',' + (a * (0.4 + r() * 0.6)).toFixed(3) + ')';
+      const s = r() < 0.85 ? 0.6 : 1.1;
+      g.fillRect(r() * TILE, r() * TILE, s, s);
+    }
+  };
+  // 斑：几团很大很淡的深浅，让纸面不那么匀
+  const blotch = (n, a) => {
+    for (let i = 0; i < n; i++) {
+      const x = r() * TILE, y = r() * TILE, rad = 30 + r() * 60;
+      for (const dx of [-TILE, 0, TILE]) for (const dy of [-TILE, 0, TILE]) {
+        const gr = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, rad);
+        gr.addColorStop(0, 'rgba(' + ink + ',' + a + ')');
+        gr.addColorStop(1, 'rgba(' + ink + ',0)');
+        g.fillStyle = gr;
+        g.fillRect(x + dx - rad, y + dy - rad, rad * 2, rad * 2);
+      }
+    }
+  };
+  // 纤维：短短的弯线
+  const fibers = (n, a) => {
+    g.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const x = r() * TILE, y = r() * TILE, len = 4 + r() * 12, ang = r() * Math.PI;
+      g.strokeStyle = 'rgba(' + ink + ',' + (a * (0.5 + r() * 0.5)).toFixed(3) + ')';
+      g.lineWidth = 0.4 + r() * 0.5;
+      g.beginPath();
+      g.moveTo(x, y);
+      g.quadraticCurveTo(x + Math.cos(ang) * len * 0.5 + (r() - 0.5) * 4, y + Math.sin(ang) * len * 0.5 + (r() - 0.5) * 4, x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+      g.stroke();
+    }
+  };
+  const k = dark ? 0.7 : 1;
+  if (texture === 'grain') { blotch(5, 0.018 * k); speck(2600, 0.07 * k); }
+  else if (texture === 'hand') { blotch(7, 0.03 * k); speck(3200, 0.09 * k); fibers(160, 0.12 * k); }
+  else if (texture === 'grid') {
+    speck(1400, 0.05 * k);
+    g.strokeStyle = 'rgba(' + (dark ? '255,255,255' : '70,110,170') + ',' + (0.09 * k) + ')';
+    g.lineWidth = 0.6;
+    g.beginPath();
+    for (let i = 0; i <= TILE; i += 16) { g.moveTo(i + 0.3, 0); g.lineTo(i + 0.3, TILE); g.moveTo(0, i + 0.3); g.lineTo(TILE, i + 0.3); }
+    g.stroke();
+  } else if (texture === 'linen') {
+    g.lineWidth = 0.5;
+    for (let i = 0; i < TILE; i += 2) {
+      g.strokeStyle = 'rgba(' + ink + ',' + ((0.02 + r() * 0.035) * k).toFixed(3) + ')';
+      g.beginPath(); g.moveTo(0, i + 0.25); g.lineTo(TILE, i + 0.25); g.stroke();
+      g.strokeStyle = 'rgba(' + ink + ',' + ((0.02 + r() * 0.035) * k).toFixed(3) + ')';
+      g.beginPath(); g.moveTo(i + 0.25, 0); g.lineTo(i + 0.25, TILE); g.stroke();
+    }
+    speck(800, 0.05 * k);
+  }
+  tiles[key] = c;
+  return c;
+}
+
+// 在 (x,y,w,h) 这块里铺满质地（调用前自己 clip 好形状）
+function fill(ctx, texture, dpr, dark, x, y, w, h) {
+  const t = tile(texture, dpr, dark);
+  if (!t) return;
+  const px = t.width;
+  // 从屏幕原点对齐，棋盘和页面的纹理接得上
+  const x0 = Math.floor(x / TILE) * TILE, y0 = Math.floor(y / TILE) * TILE;
+  for (let ty = y0; ty < y + h; ty += TILE) {
+    for (let tx = x0; tx < x + w; tx += TILE) ctx.drawImage(t, 0, 0, px, px, tx, ty, TILE, TILE);
+  }
+}
+
+const paperOf = (id) => PAPERS.find((p) => p.id === id) || PAPERS[0];
+
+// '#RRGGBB' → 'rgba(r,g,b,a)'：棋盘高亮用半透明，任何纸色、质地都透得出来
+function rgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+}
+
+module.exports = { PAPERS, TEXTURES, tile, fill, paperOf, rgba, TILE };
 
 });
 __def("js/platform.js", function (module, exports, require) {
@@ -1281,6 +1475,7 @@ module.exports = function (app) {
         vals, given: lesson.given, notes: lesson.notes, wrong: () => false,
         selected: lesson.sel, sameHighlight: true, focus: st.focus,
         rays: showRays ? st.rays : null, mark: st.mark, pops: lesson.fx.pops, rings: lesson.fx.rings, shake: lesson.fx.shake, now: t,
+        texture: app.texture(), dark: app.isDark(),
       }, app.dpr);
 
       // 底部：练习步 = 工具 + 数字键；演示步 = 「下一步」
@@ -1345,6 +1540,109 @@ module.exports = function (app) {
     padCenter: (v) => ({ x: 8 + (v - 0.5) * ((app.W - 16) / 9), y: L.padY + L.padH / 2 }),
     noteCenter: () => ({ x: app.W / 2, y: L.toolsY + L.toolsH / 2 }),
     nextCenter: () => ({ x: app.W / 2, y: L.padY + 31 }),
+  };
+};
+
+});
+__def("js/scene_look.js", function (module, exports, require) {
+// 外观：上面一块小棋盘实时预览，下面三排方块：配色、背景颜色、质地。点一下立刻换。
+const ui = require('./ui.js');
+const C = require('./config.js');
+const store = require('./store.js');
+const Paper = require('./paper.js');
+const DB = require('./drawboard.js');
+const T = require('./tutorial.js');
+
+module.exports = function (app) {
+  let back = null;
+  // 预览盘：一道题的样子，选中一格、有笔记，看得出高亮和数字颜色
+  const vals = T.SOL.map((v, k) => ((k * 7) % 5 < 2 ? v : 0));
+  const given = vals.map(Boolean);
+  vals[30] = T.SOL[30];
+  const notes = new Array(81).fill(0);
+  notes[31] = (1 << 2) | (1 << 5) | (1 << 8);
+  notes[49] = (1 << 1) | (1 << 4);
+
+  function square(ctx, th, id, x, y, s, selected, drawInside, label, onTap, locked) {
+    const on = ui.button({ id, x, y: y - 4, w: s, h: s + 26, onTap });
+    ctx.save();
+    if (on) { ctx.translate(x + s / 2, y + s / 2); ctx.scale(0.94, 0.94); ctx.translate(-x - s / 2, -y - s / 2); }
+    ui.rr(ctx, x, y, s, s, 12);
+    ctx.save(); ctx.clip(); drawInside(x, y, s); ctx.restore();
+    ui.rr(ctx, x, y, s, s, 12);
+    ctx.lineWidth = selected ? 3 : 1;
+    ctx.strokeStyle = selected ? th.primary : 'rgba(0,0,0,0.12)';
+    ctx.stroke();
+    if (selected) {
+      ctx.beginPath(); ctx.arc(x + s - 8, y + 8, 9, 0, Math.PI * 2); ctx.fillStyle = th.primary; ctx.fill();
+      ui.icons.check(ctx, x + s - 8, y + 8, 12, '#FFFFFF', 2);
+    }
+    if (locked) {
+      // 没解锁：整块蒙一层，右下角一个小锁
+      ui.fillRR(ctx, x, y, s, s, 12, 'rgba(255,255,255,0.45)');
+      ctx.beginPath(); ctx.arc(x + s - 9, y + s - 9, 10, 0, Math.PI * 2); ctx.fillStyle = 'rgba(40,44,52,0.75)'; ctx.fill();
+      ui.icons.lock(ctx, x + s - 9, y + s - 8, 12, '#FFFFFF');
+    }
+    ctx.restore();
+    ui.text(ctx, label, x + s / 2, y + s + 13, 12, selected ? th.primary : th.sub, 'center', selected ? 600 : 400);
+  }
+
+  app.scenes.look = {
+    enter(args) { back = args.back || { name: 'home' }; },
+    draw(ctx) {
+      const th = app.th, W = app.W, set = store.data.settings;
+      app.header(ctx, '外观', () => app.go(back.name, back.args || {}));
+      let y = app.headerY + app.headerH + 8;
+      // 预览
+      const size = Math.max(135, Math.min(252, Math.floor((app.bottom - y - 330) / 9) * 9));
+      const geo = { x: Math.round((W - size) / 2), y, size };
+      DB.draw(ctx, th, geo, { vals, given, notes, wrong: (k) => k === 12 && false, selected: 30, sameHighlight: set.sameHighlight, now: app.now, texture: set.texture, dark: app.isDark() }, app.dpr);
+      y += size + 18;
+
+      const s = Math.min(52, (W - 32 - 6 * 10) / 7);
+      const row = (title, items) => {
+        ui.text(ctx, title, 20, y + 8, 15, th.text, 'left', 600);
+        y += 24;
+        const gap = (W - 32 - items.length * s) / Math.max(1, items.length - 1);
+        items.forEach((it, i) => it(16 + i * (s + gap), y));
+        y += s + 34;
+      };
+      // 配色（数字、高亮的颜色）
+      row('配色', C.THEMES.map((tm) => (x, yy) => {
+        const have = store.data.themes[tm.id];
+        square(ctx, th, 'look-theme-' + tm.id, x, yy, s, set.theme === tm.id, (qx, qy, qs) => {
+          ctx.fillStyle = tm.id === 'night' ? tm.board : th.board; ctx.fillRect(qx, qy, qs, qs);
+          ui.text(ctx, '5', qx + qs * 0.33, qy + qs * 0.5, qs * 0.42, tm.given, 'center', 500);
+          ui.text(ctx, '7', qx + qs * 0.68, qy + qs * 0.5, qs * 0.42, tm.user, 'center', 400);
+          ctx.fillStyle = tm.primary; ctx.fillRect(qx, qy + qs - 7, qs, 7);
+        }, tm.name, () => {
+          if (!have) { app.toast('完成一局后，在结算页看视频解锁'); return; }
+          set.theme = tm.id; store.save(); app.sound('tap');
+        }, !have);
+      }));
+      // 背景颜色
+      const dark = app.isDark();
+      row('背景颜色' + (dark ? '（夜间配色下不换）' : ''), Paper.PAPERS.map((pp) => (x, yy) => {
+        square(ctx, th, 'look-paper-' + pp.id, x, yy, s, set.paper === pp.id && !dark, (qx, qy, qs) => {
+          ctx.fillStyle = pp.bg; ctx.fillRect(qx, qy, qs, qs);
+          ui.fillRR(ctx, qx + qs * 0.22, qy + qs * 0.22, qs * 0.56, qs * 0.56, 5, pp.board);
+        }, pp.name, () => { set.paper = pp.id; store.save(); app.sound('tap'); if (dark) app.toast('换回浅色配色就能看到'); });
+      }));
+      // 质地
+      row('质地', Paper.TEXTURES.map((tx) => (x, yy) => {
+        square(ctx, th, 'look-tex-' + tx.id, x, yy, s, set.texture === tx.id, (qx, qy, qs) => {
+          ctx.fillStyle = th.board; ctx.fillRect(qx, qy, qs, qs);
+          // 质地方块里放大两倍，看得清
+          ctx.save(); ctx.translate(qx, qy); ctx.scale(2, 2);
+          Paper.fill(ctx, tx.id, app.dpr, dark, 0, 0, qs / 2, qs / 2);
+          ctx.restore();
+          if (tx.id === 'hand') {
+            ctx.strokeStyle = th.lineBold; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(qx + qs * 0.5, qy + 6); ctx.quadraticCurveTo(qx + qs * 0.53, qy + qs * 0.5, qx + qs * 0.49, qy + qs - 6); ctx.stroke();
+          }
+        }, tx.name, () => { set.texture = tx.id; store.save(); app.sound('tap'); });
+      }));
+    },
   };
 };
 
@@ -1931,11 +2229,13 @@ module.exports = function (app) {
         selected: b.selected, sameHighlight: store.data.settings.sameHighlight,
         hintCells: hint ? hint.cells : null,
         pops: fx.pops, rings: fx.rings, flash: fx.flash, shake: fx.shake, now: t,
+        texture: app.texture(), dark: app.isDark(), hatch: store.data.settings.hatch,
       }, app.dpr);
       if (paused) {
         ui.fillRR(ctx, geo.x, geo.y, geo.size, geo.size, 10, th.board);
         ui.text(ctx, '已暂停', app.W / 2, geo.y + geo.size / 2 - 30, 20, th.text, 'center', 600);
         ui.pill(ctx, th, 'resume', app.W / 2 - 70, geo.y + geo.size / 2 + 4, 140, 48, '继续', () => { paused = false; }, 'primary');
+        ui.pill(ctx, th, 'pause-settings', app.W / 2 - 70, geo.y + geo.size / 2 + 62, 140, 44, '设置', () => app.settingsSheet({ name: 'play', args: { board: b } }), 'soft');
       }
       // 加分飘字
       fx.floats = fx.floats.filter((f) => t - f.t0 < 800);
@@ -2031,7 +2331,7 @@ const KEY = 'jingdian-shudu-v1';
 const blankStats = () => ({ played: 0, won: 0, perfect: 0, best: 0, total: 0, streak: 0, bestStreak: 0, bestScore: 0 });
 
 const data = Object.assign({
-  settings: { mistakeLimit: true, autoNotes: true, sameHighlight: true, showTimer: true, sound: true, vibrate: true, theme: 'morning' },
+  settings: null,
   stats: S.TIERS.map(blankStats),
   daily: {}, // '2026-11-20': { time, score }
   lessons: {}, // 'rules': true
@@ -2040,7 +2340,9 @@ const data = Object.assign({
   seen: { tutorial: false },
   next: [0, 0, 0, 0, 0, 0], // 每档下一题从题库第几题开始
 }, P.load(KEY) || {});
-// 老存档缺的字段补上
+// 老存档缺的字段补上（设置要逐项补，不然老存档会把新加的开关整个盖掉）
+const SETTINGS = { mistakeLimit: true, autoNotes: true, sameHighlight: true, hatch: false, showTimer: true, sound: true, vibrate: true, theme: 'morning', paper: 'cream', texture: 'grain' };
+data.settings = Object.assign({}, SETTINGS, data.settings || {});
 data.stats = S.TIERS.map((_, i) => Object.assign(blankStats(), (data.stats || [])[i] || {}));
 
 function save() { P.save(KEY, data); }
@@ -2751,6 +3053,8 @@ function rr(ctx, x, y, w, h, r) {
 }
 function fillRR(ctx, x, y, w, h, r, color) { rr(ctx, x, y, w, h, r); ctx.fillStyle = color; ctx.fill(); }
 // 卡片：一层很淡的投影
+let texFill = null;
+function setTexture(fn) { texFill = fn; }
 function card(ctx, x, y, w, h, r, th) {
   ctx.save();
   ctx.shadowColor = th.shadow;
@@ -2758,6 +3062,7 @@ function card(ctx, x, y, w, h, r, th) {
   ctx.shadowOffsetY = 2;
   fillRR(ctx, x, y, w, h, r, th.card);
   ctx.restore();
+  if (texFill) { ctx.save(); rr(ctx, x, y, w, h, r); ctx.clip(); texFill(ctx, x, y, w, h); ctx.restore(); }
 }
 function text(ctx, s, x, y, size, color, align, weight, baseline) {
   ctx.font = font(size, weight);
@@ -2946,7 +3251,7 @@ const icons = {
   },
 };
 
-module.exports = { FONT, font, ease, clamp, lerp, rr, fillRR, card, text, wrap, beginFrame, button, isPressed, hit, down, up, cancel, pill, icons, allRegions, stroke };
+module.exports = { setTexture, FONT, font, ease, clamp, lerp, rr, fillRR, card, text, wrap, beginFrame, button, isPressed, hit, down, up, cancel, pill, icons, allRegions, stroke };
 
 });
 __require('')('./game.js');

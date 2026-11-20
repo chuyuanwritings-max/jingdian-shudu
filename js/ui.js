@@ -24,6 +24,8 @@ function rr(ctx, x, y, w, h, r) {
 }
 function fillRR(ctx, x, y, w, h, r, color) { rr(ctx, x, y, w, h, r); ctx.fillStyle = color; ctx.fill(); }
 // 卡片：一层很淡的投影
+let texFill = null;
+function setTexture(fn) { texFill = fn; }
 function card(ctx, x, y, w, h, r, th) {
   ctx.save();
   ctx.shadowColor = th.shadow;
@@ -31,6 +33,7 @@ function card(ctx, x, y, w, h, r, th) {
   ctx.shadowOffsetY = 2;
   fillRR(ctx, x, y, w, h, r, th.card);
   ctx.restore();
+  if (texFill) { ctx.save(); rr(ctx, x, y, w, h, r); ctx.clip(); texFill(ctx, x, y, w, h); ctx.restore(); }
 }
 function text(ctx, s, x, y, size, color, align, weight, baseline) {
   ctx.font = font(size, weight);
@@ -219,4 +222,4 @@ const icons = {
   },
 };
 
-module.exports = { FONT, font, ease, clamp, lerp, rr, fillRR, card, text, wrap, beginFrame, button, isPressed, hit, down, up, cancel, pill, icons, allRegions, stroke };
+module.exports = { setTexture, FONT, font, ease, clamp, lerp, rr, fillRR, card, text, wrap, beginFrame, button, isPressed, hit, down, up, cancel, pill, icons, allRegions, stroke };

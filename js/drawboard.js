@@ -1,19 +1,60 @@
 // 画棋盘：局内和教学共用。
 // m = { vals[81], given[81], notes[81], wrong(k)→bool, selected, selDigit, sameHighlight,
-//       focus: 亮着的格（其余变淡）| null, rays, strike, mark, hintCells, pops:{k:t0}, shake:{k,t0}, flash:{k:t0}, now }
+//       focus: 亮着的格（其余变淡）| null, rays, strike, mark, hintCells, pops:{k:t0}, shake:{k,t0}, flash:{k:t0}, now,
+//       texture, dark, hatch: 排除辅助线 }
 const S = require('./sudoku.js');
 const ui = require('./ui.js');
 const P = require('./platform.js');
+const Paper = require('./paper.js');
 
 let cache = null; // 宫线、格线画在离屏画布上，每帧贴一次
-function linesLayer(geo, th, dpr) {
-  const key = geo.size + '|' + th.id + '|' + dpr;
+// 手写纸：一条线拆成很多小段，每段轻轻抖一下，粗细也不匀
+function handLine(g, x1, y1, x2, y2, w, seed) {
+  let s = seed;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  const len = Math.hypot(x2 - x1, y2 - y1), n = Math.max(2, Math.round(len / 14));
+  const nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
+  let px = x1, py = y1, off = 0;
+  for (let i = 1; i <= n; i++) {
+    off = off * 0.6 + (rnd() - 0.5) * 0.9;
+    const t = i / n;
+    const x = x1 + (x2 - x1) * t + nx * off, y = y1 + (y2 - y1) * t + ny * off;
+    g.lineWidth = w * (0.75 + rnd() * 0.5);
+    g.beginPath(); g.moveTo(px, py); g.lineTo(x, y); g.stroke();
+    px = x; py = y;
+  }
+}
+function linesLayer(geo, th, dpr, hand) {
+  const key = geo.size + '|' + th.lineBold + th.lineThin + '|' + dpr + '|' + (hand ? 1 : 0);
   if (cache && cache.key === key) return cache.canvas;
   const px = Math.ceil(geo.size * dpr) + 4;
   const c = P.makeCanvas(px, px);
   const g = c.getContext('2d');
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const cs = geo.size / 9, o = 1;
+  if (hand) {
+    g.lineCap = 'round';
+    g.strokeStyle = th.lineThin;
+    for (let i = 1; i < 9; i++) {
+      if (i % 3 === 0) continue;
+      const p = o + i * cs;
+      handLine(g, p, o + 2, p, o + geo.size - 2, 1, 101 + i);
+      handLine(g, o + 2, p, o + geo.size - 2, p, 1, 201 + i);
+    }
+    g.strokeStyle = th.lineBold;
+    g.globalAlpha = 0.85;
+    for (let i = 3; i < 9; i += 3) {
+      const p = o + i * cs;
+      handLine(g, p, o + 1, p, o + geo.size - 1, 2, 301 + i);
+      handLine(g, o + 1, p, o + geo.size - 1, p, 2, 401 + i);
+    }
+    handLine(g, o, o, o + geo.size, o, 2.2, 501);
+    handLine(g, o + geo.size, o, o + geo.size, o + geo.size, 2.2, 502);
+    handLine(g, o + geo.size, o + geo.size, o, o + geo.size, 2.2, 503);
+    handLine(g, o, o + geo.size, o, o, 2.2, 504);
+    cache = { key, canvas: c };
+    return c;
+  }
   g.strokeStyle = th.lineThin;
   g.lineWidth = 1;
   g.beginPath();
@@ -52,6 +93,9 @@ function draw(ctx, th, geo, m, dpr) {
   ctx.save();
   ui.rr(ctx, geo.x, geo.y, geo.size, geo.size, 10);
   ctx.clip();
+  if (m.texture) Paper.fill(ctx, m.texture, dpr, m.dark, geo.x, geo.y, geo.size, geo.size);
+  // 高亮用主色的半透明，纸色和质地都透得出来
+  const HL = { rel: Paper.rgba(th.primary, m.dark ? 0.14 : 0.09), same: Paper.rgba(th.primary, m.dark ? 0.26 : 0.17), sel: Paper.rgba(th.primary, m.dark ? 0.4 : 0.27), hint: Paper.rgba(th.gold, 0.2) };
 
   // 高亮：同行同列同宫（浅）→ 相同数字（中）→ 选中格（深）
   const sel = m.selected;
@@ -59,16 +103,37 @@ function draw(ctx, th, geo, m, dpr) {
   const digit = m.selDigit || selVal;
   for (let k = 0; k < 81; k++) {
     let bg = null;
-    if (sel >= 0 && k !== sel && (S.ROW(k) === S.ROW(sel) || S.COL(k) === S.COL(sel) || S.BOX(k) === S.BOX(sel))) bg = th.rel;
-    if (m.sameHighlight !== false && digit && m.vals[k] === digit && k !== sel) bg = th.same;
-    if (m.hintCells && m.hintCells.indexOf(k) >= 0) bg = th.soft;
-    if (k === sel) bg = th.sel;
-    if (m.wrong && m.wrong(k) && k === sel) bg = th.sel;
+    if (sel >= 0 && k !== sel && (S.ROW(k) === S.ROW(sel) || S.COL(k) === S.COL(sel) || S.BOX(k) === S.BOX(sel))) bg = HL.rel;
+    if (m.sameHighlight !== false && digit && m.vals[k] === digit && k !== sel) bg = HL.same;
+    if (m.hintCells && m.hintCells.indexOf(k) >= 0) bg = HL.hint;
+    if (k === sel) bg = HL.sel;
     if (bg) {
       const r = cellRect(geo, k);
       ctx.fillStyle = bg;
       ctx.fillRect(r.x, r.y, cs + 0.5, cs + 0.5);
     }
+  }
+  if (m.hatch && digit) {
+    const cover = new Array(81).fill(false);
+    for (let k = 0; k < 81; k++) {
+      if (m.vals[k] !== digit || (m.wrong && m.wrong(k))) continue;
+      for (const u of S.UNITS_OF[k]) for (const x of S.UNITS[u]) cover[x] = true;
+    }
+    ctx.save();
+    ctx.strokeStyle = Paper.rgba(m.dark ? '#FFFFFF' : '#1F2A3A', m.dark ? 0.16 : 0.13);
+    ctx.lineWidth = 1;
+    for (let k = 0; k < 81; k++) {
+      if (!cover[k] || m.vals[k]) continue;
+      const r = cellRect(geo, k);
+      ctx.fillStyle = Paper.rgba(m.dark ? '#FFFFFF' : '#1F2A3A', 0.045);
+      ctx.fillRect(r.x, r.y, cs + 0.5, cs + 0.5);
+      ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, cs, cs); ctx.clip();
+      ctx.beginPath();
+      for (let d = -cs; d < cs; d += cs / 4) { ctx.moveTo(r.x + d, r.y + cs); ctx.lineTo(r.x + d + cs, r.y); }
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
   }
   // 教学：被「划掉」的行列（淡红带）
   if (m.rays) {
@@ -93,7 +158,7 @@ function draw(ctx, th, geo, m, dpr) {
     }
   }
 
-  ctx.drawImage(linesLayer(geo, th, dpr), 0, 0, Math.ceil(geo.size * dpr) + 4, Math.ceil(geo.size * dpr) + 4, geo.x - 1, geo.y - 1, (Math.ceil(geo.size * dpr) + 4) / dpr, (Math.ceil(geo.size * dpr) + 4) / dpr);
+  ctx.drawImage(linesLayer(geo, th, dpr, m.texture === 'hand'), 0, 0, Math.ceil(geo.size * dpr) + 4, Math.ceil(geo.size * dpr) + 4, geo.x - 1, geo.y - 1, (Math.ceil(geo.size * dpr) + 4) / dpr, (Math.ceil(geo.size * dpr) + 4) / dpr);
 
   // 数字和笔记
   const fs = Math.round(cs * 0.6), ns = Math.max(9, Math.round(cs * 0.27));
