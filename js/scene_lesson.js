@@ -128,7 +128,9 @@ module.exports = function (app) {
         ui.icons.check(ctx, app.W / 2, m.y + 52, 30, '#FFFFFF', 3.4);
         ui.text(ctx, '学会了「' + T.LESSONS[i].name + '」', app.W / 2, m.y + 104, 20, th.text, 'center', 700);
         const bx = m.x + 20, bw = m.w - 40;
-        if (lesson.then === 'guided') {
+        if (lesson.then === 'challenge') {
+          ui.pill(ctx, th, 'lf-challenge', bx, m.y + 140, bw, 50, '开始挑战（前 3 步带着你）', () => { app.pop(); app.startChallenge(true); }, 'primary');
+        } else if (lesson.then === 'guided') {
           ui.pill(ctx, th, 'lf-guided', bx, m.y + 140, bw, 50, '开始第一局（带着你下）', () => { app.pop(); app.startGame(0, { guided: true }); }, 'primary');
         } else if (lesson.then && lesson.then.tier !== undefined) {
           const tn = S.TIERS[lesson.then.tier].name;

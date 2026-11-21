@@ -173,6 +173,54 @@ function save(key, value) {
     else window.localStorage.setItem(key, raw);
   } catch (e) {}
 }
+
+// ---------- 挑战卡：分享、读链接 ----------
+// 启动时带的参数（朋友点挑战卡进来时有 c=...）
+function launchQuery() {
+  try {
+    if (isWx) return (wx.getLaunchOptionsSync && wx.getLaunchOptionsSync().query) || {};
+    const q = {};
+    new URLSearchParams(window.location.search).forEach((v, k) => (q[k] = v));
+    return q;
+  } catch (e) { return {}; }
+}
+// 已经开着游戏、又从别的挑战卡点进来（微信热启动）
+function onShow(fn) {
+  if (isWx && wx.onShow) wx.onShow((res) => fn((res && res.query) || {}));
+}
+// 把一张画布存成图片（微信分享卡片的图），失败就不带图
+function canvasImage(c) {
+  try {
+    if (isWx && c.toTempFilePathSync) return c.toTempFilePathSync({ fileType: 'png' });
+    if (!isWx && c.toDataURL) return c.toDataURL('image/png');
+  } catch (e) {}
+  return '';
+}
+// 分享：微信里直接弹「发给朋友」；浏览器返回链接，由游戏自己弹一个分享窗
+function shareLink(query) {
+  if (isWx) return '';
+  const base = window.location.origin + window.location.pathname;
+  return base + '?' + Object.keys(query).map((k) => k + '=' + encodeURIComponent(query[k])).join('&');
+}
+function shareToWx(title, query, image) {
+  if (!isWx || !wx.shareAppMessage) return false;
+  const qs = Object.keys(query).map((k) => k + '=' + encodeURIComponent(query[k])).join('&');
+  wx.shareAppMessage({ title, query: qs, imageUrl: image || undefined });
+  return true;
+}
+function systemShare(title, url) {
+  if (isWx || typeof navigator === 'undefined' || !navigator.share) return false;
+  navigator.share({ title, text: title, url }).catch(() => {});
+  return true;
+}
+function copyText(text) {
+  try {
+    if (!isWx && navigator.clipboard) { navigator.clipboard.writeText(text).catch(() => {}); return true; }
+    if (isWx && wx.setClipboardData) { wx.setClipboardData({ data: text }); return true; }
+  } catch (e) {}
+  return false;
+}
+
 function exposeForTest(name, value) {
   if (!isWx && typeof window !== 'undefined') window[name] = value;
 }
@@ -181,4 +229,5 @@ module.exports = {
   isWx, setup, makeCanvas, now, nextFrame, onHide, vibrate, setVibrate, showRewardedAd,
   hasOpenData, uploadScore, openDataCanvas, postOpenData, enableShare,
   load, save, exposeForTest, sound, unlockAudio, setMuted,
+  launchQuery, onShow, canvasImage, shareLink, shareToWx, systemShare, copyText,
 };

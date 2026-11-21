@@ -23,34 +23,59 @@ module.exports = function (app) {
       ui.icons.check(ctx, 0, 0, 40, '#FFFFFF', 4);
       ctx.restore();
       y += 96;
-      ui.text(ctx, '完成！', W / 2, y, 28, th.text, 'center', 700);
       const tierName = S.TIERS[b.tier].name;
+      const half = (W - 32 - 10) / 2;
+      if (b.mode === 'challenge') {
+        // ---- 好友挑战：两人对比 ----
+        const r = app.challengeResult(b);
+        ui.text(ctx, r.win ? '你赢了！' : '差一点', W / 2, y, 28, r.win ? th.ok : th.text, 'center', 700);
+        ui.text(ctx, (r.tie ? '和朋友一样快' + (r.win ? '，错得不比他多' : '，但错得多一点') : (r.win ? '比朋友快了 ' : '比朋友慢了 ') + app.fmt(r.diff)) + ' · 「' + tierName + '」', W / 2, y + 34, 14, th.sub, 'center');
+        y += 66;
+        const cw = half, chh = 128;
+        [['你', b.elapsed, b.mistakes, r.win], ['朋友', b.challenge.time, b.challenge.mistakes, !r.win]].forEach(([who, tm, mis, best], i) => {
+          const x = 16 + i * (cw + 10);
+          ui.card(ctx, x, y, cw, chh, 16, th);
+          if (best) { ui.rr(ctx, x, y, cw, chh, 16); ctx.strokeStyle = th.gold; ctx.lineWidth = 3; ctx.stroke(); ui.icons.trophy(ctx, x + cw - 24, y + 24, 22, th.gold, 1); }
+          ui.text(ctx, who, x + 18, y + 26, 15, th.sub, 'left', 600);
+          ui.text(ctx, app.fmt(tm), x + cw / 2, y + 70, 32, th.text, 'center', 700);
+          ui.text(ctx, mis ? '错 ' + mis + ' 次' : '一次没错', x + cw / 2, y + 104, 13, th.sub, 'center');
+        });
+        y += chh + 22;
+        ui.pill(ctx, th, 'res-reply', 16, y, W - 32, 54, r.win ? '发回去，让他再来' : '发回去挑战他', () => app.shareChallenge(b, true), 'primary');
+        y += 64;
+        ui.pill(ctx, th, 'res-again', 16, y, half, 50, '再来一局', () => app.startGame(b.tier), 'card');
+        ui.pill(ctx, th, 'res-home', 26 + half, y, half, 50, '回首页', () => app.go('home'), 'card');
+        y += 64;
+      } else {
+      ui.text(ctx, '完成！', W / 2, y, 28, th.text, 'center', 700);
       ui.text(ctx, (b.mode === 'daily' ? '每日挑战 · ' + b.date.slice(5).replace('-', '月') + '日 · ' : '') + tierName, W / 2, y + 34, 14, th.sub, 'center');
       y += 70;
       // 分数滚上去
       const shown = Math.round(b.score * ui.ease.out(p));
       ui.text(ctx, String(shown), W / 2, y + 20, 44, th.primary, 'center', 700);
       ui.text(ctx, b.newBestScore ? '本档最高分！' : '分', W / 2, y + 56, 13, b.newBestScore ? th.gold : th.sub, 'center', 600);
-      y += 84;
+      y += 80;
       // 数据
       const st = store.data.stats[b.tier];
       const rows = b.mode === 'daily'
         ? [['用时', app.fmt(b.elapsed)], ['错误', String(b.mistakes)], ['本月完成', Object.keys(store.data.daily).filter((k) => k.slice(0, 7) === b.date.slice(0, 7)).length + ' 天']]
         : [['用时', app.fmt(b.elapsed) + (b.newBest ? '  新纪录' : '')], ['本档最好', app.fmt(st.best)], ['错误', String(b.mistakes)], ['连胜', st.streak + ' 局']];
-      const rh = 44;
-      ui.card(ctx, 16, y, W - 32, rows.length * rh + 12, 16, th);
+      const rh = 40;
+      ui.card(ctx, 16, y, W - 32, rows.length * rh + 10, 16, th);
       rows.forEach((r, i) => {
-        const ry = y + 6 + i * rh + rh / 2;
+        const ry = y + 5 + i * rh + rh / 2;
         ui.text(ctx, r[0], 36, ry, 15, th.sub);
         ui.text(ctx, r[1], W - 36, ry, 16, r[1].indexOf('新纪录') >= 0 ? th.gold : th.text, 'right', 600);
       });
-      y += rows.length * rh + 12 + 20;
-      // 按钮
-      if (b.mode === 'daily') ui.pill(ctx, th, 'res-cal', 16, y, W - 32, 54, '回日历', () => app.go('daily'), 'primary');
-      else ui.pill(ctx, th, 'res-again', 16, y, W - 32, 54, '再来一局 · ' + tierName, () => app.startGame(b.tier), 'primary');
+      y += rows.length * rh + 10 + 18;
+      // 按钮：发给朋友挑战这一题（主按钮）；再来一局 / 回首页并排
+      ui.pill(ctx, th, 'res-share', 16, y, W - 32, 54, '发给朋友挑战这一题', () => app.shareChallenge(b), 'primary');
       y += 64;
-      ui.pill(ctx, th, 'res-home', 16, y, W - 32, 50, '回首页', () => app.go('home'), 'card');
+      if (b.mode === 'daily') ui.pill(ctx, th, 'res-cal', 16, y, half, 50, '回日历', () => app.go('daily'), 'card');
+      else ui.pill(ctx, th, 'res-again', 16, y, half, 50, '再来一局', () => app.startGame(b.tier), 'card');
+      ui.pill(ctx, th, 'res-home', 26 + half, y, half, 50, '回首页', () => app.go('home'), 'card');
       y += 64;
+      }
       // 结算页的激励视频：解锁一套配色
       const locked = C.THEMES.filter((tm) => !store.data.themes[tm.id]);
       if (locked.length) {

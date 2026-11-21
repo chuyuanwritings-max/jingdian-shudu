@@ -239,6 +239,13 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     ok(r === 'result', name + ' 用真点击解完 → 结算');
   }
   await shot('25_困难_结算');
+  // 发给朋友挑战这一题（浏览器里弹分享窗，给出链接）
+  await tap('res-share', 400);
+  await shot('26_发给朋友_卡片预览');
+  const shareUrl = await ev(() => window.__app.lastShare && window.__app.lastShare.url);
+  ok(!!shareUrl && shareUrl.indexOf('c=3.') > 0 && shareUrl.indexOf('p=') > 0, '结算页「发给朋友挑战」生成挑战链接');
+  await page.mouse.click(195, 60); // 点上面空白处关掉
+  await page.waitForTimeout(300);
   const stats = await ev(() => window.__store.data.stats);
   ok(stats[0].won === 1 && stats[1].won === 1 && stats[2].won === 1 && stats[3].won === 1, '战绩：四档各赢 1 局');
 
@@ -296,7 +303,53 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await tap('quiz-go', 600);
   ok((await ev(() => window.__app.testHooks.board().tier)) === 1, '两题都对 → 推荐「简单」开局');
 
-  // ---------- 9. 没有报错 ----------
+  // ---------- 9. 朋友点开挑战链接（另一个全新的浏览器 = 第一次玩的朋友）----------
+  const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const p2 = await ctx2.newPage();
+  p2.on('pageerror', (e) => errors.push('朋友端：' + String(e.stack || e)));
+  await p2.goto(shareUrl);
+  await p2.waitForTimeout(700);
+  const ev2 = (fn, arg) => p2.evaluate(fn, arg);
+  const click2 = async (pt, w) => { await p2.mouse.click(pt.x, pt.y); await p2.waitForTimeout(w === undefined ? 80 : w); };
+  const tap2 = async (id, w) => { await p2.waitForTimeout(30); const pt = await ev2((id) => { const r = window.__regions().find((x) => x.id === id); return r ? { x: r.x + r.w / 2, y: r.y + r.h / 2 } : null; }, id); if (!pt) throw new Error('朋友端找不到按钮 ' + id); await click2(pt, w === undefined ? 300 : w); };
+  const shot2 = (n) => p2.screenshot({ path: path.join(SHOTS, n + '.png') });
+  ok((await ev2(() => window.__app.sceneName)) === 'challenge', '朋友点开链接：直接到这一题的挑战页（不先进首页）');
+  await shot2('30_朋友点开_挑战页');
+  await tap2('ch-learn', 400);
+  ok((await ev2(() => window.__app.lessonHooks.state().then)) === 'challenge', '第一次玩的朋友：先学 30 秒规则');
+  for (let guard = 0; guard < 30; guard++) {
+    const st = await ev2(() => { const L = window.__app.lessonHooks.state(); const s = L.steps[L.si]; return { ai: L.ai, ok: L.ok, actions: s.actions || null, demo: !!s.demo }; });
+    if (st.actions && !st.ok) {
+      const a = st.actions[st.ai];
+      if (a.cell !== undefined) await click2(await ev2((k) => window.__app.lessonHooks.cellCenter(k), a.cell), 120);
+      else await click2(await ev2((v) => window.__app.lessonHooks.padCenter(v), a.num), 120);
+      continue;
+    }
+    if (st.demo) await p2.waitForTimeout(1700);
+    await tap2('lnext', 300);
+    if ((await ev2(() => window.__app.overlays.length)) > 0) break;
+  }
+  await tap2('lf-challenge', 600);
+  let cb = await ev2(() => { const b = window.__app.testHooks.board(); return { mode: b.mode, guided: b.guided, ch: b.challenge, tier: b.tier }; });
+  ok(cb.mode === 'challenge' && cb.guided && cb.ch && cb.tier === 3, '学完规则 → 做朋友那一题（困难），前 3 步带着走，顶上有朋友的用时');
+  await p2.waitForTimeout(300);
+  await shot2('31_朋友端_带练挑战');
+  // 朋友用真点击做完
+  const b2 = await ev2(() => { const b = window.__app.testHooks.board(); return { vals: b.vals, sol: b.sol }; });
+  for (let k = 0; k < 81; k++) {
+    if (b2.vals[k]) continue;
+    await click2(await ev2((k) => window.__app.testHooks.cellCenter(k), k), 20);
+    await click2(await ev2((v) => window.__app.testHooks.padCenter(v), +b2.sol[k]), 25);
+  }
+  await p2.waitForTimeout(3300);
+  ok((await ev2(() => window.__app.sceneName)) === 'result', '朋友做完 → 结算');
+  await shot2('32_朋友端_两人对比');
+  await tap2('res-reply', 400);
+  const back = await ev2(() => window.__app.lastShare && window.__app.lastShare.url);
+  ok(!!back && back.indexOf('c=3.') > 0, '朋友能「发回去挑战他」');
+  await ctx2.close();
+
+  // ---------- 10. 没有报错 ----------
   ok(errors.length === 0, '没有报错' + (errors.length ? '：' + errors.slice(0, 3).join(' | ') : ''));
   console.log('\n' + pass + ' 项通过，' + fail + ' 项没过');
   await browser.close();

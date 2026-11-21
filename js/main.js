@@ -178,9 +178,14 @@ require('./scene_pages.js')(app);
 require('./overlays.js')(app);
 require('./scene_look.js')(app);
 require('./scene_welcome.js')(app);
+require('./scene_challenge.js')(app);
 
-if (!store.data.seen.tutorial) app.go('welcome');
-else app.go('home');
+// 朋友点挑战卡进来：直接到那一题的挑战页
+if (!app.openChallenge(P.launchQuery())) {
+  if (!store.data.seen.tutorial) app.go('welcome');
+  else app.go('home');
+}
+P.onShow((q) => { if (q && q.c) app.openChallenge(q); });
 frame();
 
 // 给机器人测试用（只在浏览器里挂）

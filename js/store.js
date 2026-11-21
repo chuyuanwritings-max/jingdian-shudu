@@ -48,6 +48,8 @@ function recordWin(b) {
     s.streak++;
     s.bestStreak = Math.max(s.bestStreak, s.streak);
     P.uploadScore('best_' + S.TIERS[b.tier].id, s.bestScore, { time: s.best });
+  } else if (b.mode === 'challenge') {
+    data.challenges = (data.challenges || 0) + 1;
   } else if (b.mode === 'daily') {
     data.daily[b.date] = { time: b.elapsed, score: b.score };
     P.uploadScore('daily_' + b.date.slice(0, 7), monthScore(b.date.slice(0, 7)));

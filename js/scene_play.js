@@ -262,7 +262,12 @@ module.exports = function (app) {
     ui.text(ctx, '错误', 20, y, 13, th.sub);
     ui.text(ctx, lim ? b.mistakes + '/' + C.RULES.maxMistakes : String(b.mistakes), 52, y, 14, b.mistakes ? th.wrong : th.text, 'left', 600);
     ui.text(ctx, String(b.score), W / 2, y, 17, th.text, 'center', 700);
-    if (store.data.settings.showTimer !== false) ui.text(ctx, app.fmt(b.elapsed), W - 20, y, 14, th.text, 'right', 500);
+    if (b.challenge) {
+      // 好友挑战：时间旁边写着朋友的用时，超过了变红
+      const over = b.elapsed > b.challenge.time;
+      ui.text(ctx, app.fmt(b.elapsed), W - 20, y - 7, 14, over ? th.wrong : th.text, 'right', 600);
+      ui.text(ctx, '朋友 ' + app.fmt(b.challenge.time), W - 20, y + 10, 11, th.sub, 'right');
+    } else if (store.data.settings.showTimer !== false) ui.text(ctx, app.fmt(b.elapsed), W - 20, y, 14, th.text, 'right', 500);
   }
   // 带练：卡片上一行字说为什么，手指先指格子、选中以后指数字键
   function drawGuide(ctx, th, t) {
@@ -389,7 +394,7 @@ module.exports = function (app) {
     draw(ctx, t) {
       const th = app.th;
       const tierName = S.TIERS[b.tier].name;
-      const title = b.mode === 'daily' ? '每日挑战 · ' + tierName : tierName;
+      const title = b.mode === 'daily' ? '每日挑战 · ' + tierName : b.mode === 'challenge' ? '好友挑战 · ' + tierName : tierName;
       app.header(ctx, title, () => { persist(); app.go(b.mode === 'daily' ? 'daily' : 'home'); }, (ctx2, y, h) => {
         const x = app.headerRight - 48;
         const on = ui.button({ id: 'pause', x, y, w: 44, h, onTap: () => { paused = !paused; persist(); } });
