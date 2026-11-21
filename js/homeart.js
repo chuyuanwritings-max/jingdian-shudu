@@ -8,7 +8,7 @@ const C = require('./config.js');
 const INK = '#050706', DARK = '#0B0F0E', TEAL = '#265053', TEAL2 = '#358179', AMBER = '#E0B040', AMBER2 = '#B0902E', PAPER = '#EEE6D0';
 
 let cache = null; // { key, canvas, lit: { x, y, s } }  lit = 亮的那一块在屏幕上的中心和边长（逻辑像素）
-let mjImg = null, mjTried = false;
+let mjImg = null, mjTried = false, mjDone = false; // mjDone：图加载完了或失败了（不再等）
 
 // 抖一点的粗墨线
 function inkLine(g, pts, w, seed) {
@@ -96,7 +96,7 @@ function get(W, H, dpr) {
   if (cache && cache.key === key) return cache;
   if (C.HOME_ART.src && !mjTried) {
     mjTried = true;
-    P.loadImage(C.HOME_ART.src, (img) => { if (img) { mjImg = img; cache = null; } });
+    P.loadImage(C.HOME_ART.src, (img) => { mjDone = true; if (img) { mjImg = img; cache = null; } waiters.splice(0).forEach((f) => f()); });
   }
   if (mjImg && C.HOME_ART.lit) {
     // 铺满（cover）裁两边；亮的那一块按裁完以后的坐标换算
@@ -107,7 +107,7 @@ function get(W, H, dpr) {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.drawImage(mjImg, ox, oy, dw, dh);
     const L = C.HOME_ART.lit;
-    cache = { key, canvas: c, lit: { x: ox + L.cx * dw, y: oy + L.cy * dh, s: L.s * dw } };
+    cache = { key, canvas: c, lit: { x: ox + L.cx * dw, y: oy + L.cy * dh, s: L.s * dw }, band: C.HOME_ART.band ? oy + C.HOME_ART.band * dh : null };
   } else {
     const r = drawPlaceholder(W, H, dpr);
     cache = { key, canvas: r.canvas, lit: r.lit };
@@ -115,17 +115,35 @@ function get(W, H, dpr) {
   return cache;
 }
 
+// 等主页图加载好再做事（开场要对准图里亮的那一块）；最多等 maxMs，超时就用代码占位
+const waiters = [];
+function whenReady(W, H, dpr, cb, maxMs) {
+  get(W, H, dpr); // 顺手开始加载
+  if (!C.HOME_ART.src || mjDone) { cb(); return; }
+  let called = false;
+  const once = () => { if (!called) { called = true; cb(); } };
+  waiters.push(once);
+  setTimeout(once, maxMs || 1500);
+}
+
+// 主页现在画的是哪张图，就用哪套颜色（图没加载好时画的是暗底占位，字要保持纸白）
+function showingMj() { return !!(mjImg && C.HOME_ART.lit); }
+// 图上方空白纸边的下沿在屏幕上的 y（没有就 null）
+function bandY(W, H, dpr) { return showingMj() ? get(W, H, dpr).band : null; }
+function colors() { return showingMj() && C.HOME_ART.tone === 'light' ? C.HOME_LIGHT : C.HOME; }
+
 // 画主页背景 + 上下两道遮罩（字看得清）
 function draw(ctx, W, H, dpr) {
   const art = get(W, H, dpr);
   ctx.drawImage(art.canvas, 0, 0, art.canvas.width, art.canvas.height, 0, 0, W, H);
+  const K = colors(), m = K.mask;
   const top = ctx.createLinearGradient(0, 0, 0, H * 0.3);
-  top.addColorStop(0, 'rgba(0,0,0,0.35)'); top.addColorStop(1, 'rgba(0,0,0,0)');
+  top.addColorStop(0, 'rgba(' + m + ',' + K.maskTop + ')'); top.addColorStop(1, 'rgba(' + m + ',0)');
   ctx.fillStyle = top; ctx.fillRect(0, 0, W, H * 0.3);
   const bot = ctx.createLinearGradient(0, H * 0.6, 0, H);
-  bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(1, 'rgba(0,0,0,0.55)');
+  bot.addColorStop(0, 'rgba(' + m + ',0)'); bot.addColorStop(1, 'rgba(' + m + ',' + K.maskBot + ')');
   ctx.fillStyle = bot; ctx.fillRect(0, H * 0.6, W, H * 0.4);
   return art;
 }
 
-module.exports = { get, draw, AMBER, PAPER, INK };
+module.exports = { get, draw, colors, whenReady, bandY, AMBER, PAPER, INK };

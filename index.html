@@ -174,7 +174,7 @@ module.exports = { create, input, erase, undo, findHint, fillHint, revive, count
 __def("js/config.js", function (module, exports, require) {
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.7';
+const VERSION = '0.7.1';
 
 // 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
 // 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
@@ -273,11 +273,19 @@ const CUT = {
   flashMax: 0.7, flashChalk: 0.5,
 };
 // 主页图：Midjourney 的图到了以后填 src，并量出「亮的那一块」在图上的中心和边长（占图宽的比例）
-const HOME_ART = { src: '', lit: null };
-// 主页的颜色跟着主页图走，不跟主题走
-const HOME = { title: '#F3EAD2', button: '#E0B040', buttonText: '#141A17', sub: 'rgba(243,234,210,0.72)', amber: '#E0B040' };
+// tone：图是暗底（dark）还是亮底（light），主页的字、图标、遮罩跟着换
+const HOME_ART = { src: 'images/bg_home.jpg', lit: { cx: 0.4501, cy: 0.3570, s: 0.1495 }, band: 0.165, tone: 'light' }; // band：图上方那条空白纸边的下沿（占图高），游戏名放在这条边里 // 2026-11-21 Cc 选 A2 第 1 张；亮块按原图 1632×2912 像素量出
+// 主页的颜色跟着主页图走，不跟主题走。暗底：纸白字 + 琥珀按钮；亮底（A2）：墨黑字 + 墨黑按钮，琥珀只留给亮的那一块
+const HOME = {
+  title: '#F3EAD2', button: '#E0B040', buttonText: '#141A17', sub: 'rgba(243,234,210,0.72)', amber: '#E0B040',
+  mask: '0,0,0', maskTop: 0.35, maskBot: 0.55, panel: 'rgba(8,11,10,0.55)', card: 'rgba(20,28,27,0.9)', cardOn: 'rgba(38,80,83,0.92)', cardLine: 'rgba(224,176,64,0.35)', flash: '#FFFFFF',
+};
+const HOME_LIGHT = {
+  title: '#141A17', button: '#141A17', buttonText: '#EEE6D0', sub: 'rgba(20,26,23,0.62)', amber: '#E0B040',
+  mask: '238,230,208', maskTop: 0.55, maskBot: 0.7, panel: 'rgba(242,232,212,0.95)', card: 'rgba(246,241,228,0.96)', cardOn: 'rgba(224,214,188,0.98)', cardLine: 'rgba(20,26,23,0.22)', flash: '#E0B040',
+};
 
-module.exports = { CUT, HOME_ART, HOME, VERSION, THEMES, SCORE, speedMultiplier, RULES, ADS, DAILY_TIER };
+module.exports = { CUT, HOME_ART, HOME, HOME_LIGHT, VERSION, THEMES, SCORE, speedMultiplier, RULES, ADS, DAILY_TIER };
 
 });
 __def("js/cuts.js", function (module, exports, require) {
@@ -407,7 +415,21 @@ module.exports = function (app) {
   // ---------- 开场：游戏名亮相（第一次打开，2.6 秒）----------
   // 黑 → 暗方块淡入（对准主页图里亮的那一块）→ 呼吸 → 「啪」亮成琥珀 + 白闪里硬切成主页图 → 镜头拉回 → 游戏名弹出
   app.cutOpen = (onEnd) => {
-    const art = require('./homeart.js').get(app.W, app.H, app.dpr);
+    // 主页图（Midjourney）是异步加载的：先黑屏等它（最多 2.5 秒），开场才对得准亮的那一块，播完也接得上同一张图
+    const HA = require('./homeart.js');
+    let waiting = true;
+    const black = { cut: true, live: () => waiting, draw(ctx) { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, app.W, app.H); } };
+    app.push(black);
+    black.t0 = P.now() - 1000;
+    HA.whenReady(app.W, app.H, app.dpr, () => {
+      waiting = false;
+      const i = app.overlays.indexOf(black);
+      if (i >= 0) app.overlays.splice(i, 1);
+      playOpen(HA, onEnd);
+    }, 2500); // 微信里图在包内，几乎瞬间到；网页版走网络，多等一会儿
+  };
+  function playOpen(HA, onEnd) {
+    const art = HA.get(app.W, app.H, app.dpr);
     const L = art.lit, W = app.W, H = app.H;
     const tsz = Math.round(L.s * 1.05);
     const images = { home: art.canvas, dark: tileImg(tsz, DARKT), lit: tileImg(tsz, AMBER) };
@@ -431,14 +453,14 @@ module.exports = function (app) {
                { at: 0, fx: 'particles', preset: 'spark', n: 16, origin: pos, z: 3 }, { at: 0, sfx: 'lamp' }] },
         { id: 'pose', type: 'pose', dur: 60,
           fx: [{ at: 0, fx: 'camera', to: 1, dur: 40, ease: 'out', focus: pos },
-               { at: 10, fx: 'text', str: app.TITLE, in: 'pop', pos: [0.5, app.titleY / H], size: 44, color: PAPER, stroke: 'rgba(0,0,0,0)', dur: 50 },
+               { at: 10, fx: 'text', str: app.TITLE, in: 'pop', pos: [0.5, app.titleY / H], size: 44, color: HA.colors().title, stroke: 'rgba(0,0,0,0)', dur: 50 },
                { at: 10, sfx: 'bell9' }, { at: 0, fx: 'particles', preset: 'dust', n: 8, z: 4, dur: 60 }] },
       ],
     };
     store.data.seen.open = true;
     store.save();
     return app.playCut(tl, images, { onEnd });
-  };
+  }
 
   // ---------- 学完一课（1.5 秒，短版 0.8 秒）----------
   // 压暗 → 停 → 写着课号的方块从上面砸到正中 → 咚 → 七个小点第 n 个点亮 +「学会了 · 排除法」→ 纸色一闪
@@ -1421,7 +1443,7 @@ const C = require('./config.js');
 const INK = '#050706', DARK = '#0B0F0E', TEAL = '#265053', TEAL2 = '#358179', AMBER = '#E0B040', AMBER2 = '#B0902E', PAPER = '#EEE6D0';
 
 let cache = null; // { key, canvas, lit: { x, y, s } }  lit = 亮的那一块在屏幕上的中心和边长（逻辑像素）
-let mjImg = null, mjTried = false;
+let mjImg = null, mjTried = false, mjDone = false; // mjDone：图加载完了或失败了（不再等）
 
 // 抖一点的粗墨线
 function inkLine(g, pts, w, seed) {
@@ -1509,7 +1531,7 @@ function get(W, H, dpr) {
   if (cache && cache.key === key) return cache;
   if (C.HOME_ART.src && !mjTried) {
     mjTried = true;
-    P.loadImage(C.HOME_ART.src, (img) => { if (img) { mjImg = img; cache = null; } });
+    P.loadImage(C.HOME_ART.src, (img) => { mjDone = true; if (img) { mjImg = img; cache = null; } waiters.splice(0).forEach((f) => f()); });
   }
   if (mjImg && C.HOME_ART.lit) {
     // 铺满（cover）裁两边；亮的那一块按裁完以后的坐标换算
@@ -1520,7 +1542,7 @@ function get(W, H, dpr) {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.drawImage(mjImg, ox, oy, dw, dh);
     const L = C.HOME_ART.lit;
-    cache = { key, canvas: c, lit: { x: ox + L.cx * dw, y: oy + L.cy * dh, s: L.s * dw } };
+    cache = { key, canvas: c, lit: { x: ox + L.cx * dw, y: oy + L.cy * dh, s: L.s * dw }, band: C.HOME_ART.band ? oy + C.HOME_ART.band * dh : null };
   } else {
     const r = drawPlaceholder(W, H, dpr);
     cache = { key, canvas: r.canvas, lit: r.lit };
@@ -1528,20 +1550,38 @@ function get(W, H, dpr) {
   return cache;
 }
 
+// 等主页图加载好再做事（开场要对准图里亮的那一块）；最多等 maxMs，超时就用代码占位
+const waiters = [];
+function whenReady(W, H, dpr, cb, maxMs) {
+  get(W, H, dpr); // 顺手开始加载
+  if (!C.HOME_ART.src || mjDone) { cb(); return; }
+  let called = false;
+  const once = () => { if (!called) { called = true; cb(); } };
+  waiters.push(once);
+  setTimeout(once, maxMs || 1500);
+}
+
+// 主页现在画的是哪张图，就用哪套颜色（图没加载好时画的是暗底占位，字要保持纸白）
+function showingMj() { return !!(mjImg && C.HOME_ART.lit); }
+// 图上方空白纸边的下沿在屏幕上的 y（没有就 null）
+function bandY(W, H, dpr) { return showingMj() ? get(W, H, dpr).band : null; }
+function colors() { return showingMj() && C.HOME_ART.tone === 'light' ? C.HOME_LIGHT : C.HOME; }
+
 // 画主页背景 + 上下两道遮罩（字看得清）
 function draw(ctx, W, H, dpr) {
   const art = get(W, H, dpr);
   ctx.drawImage(art.canvas, 0, 0, art.canvas.width, art.canvas.height, 0, 0, W, H);
+  const K = colors(), m = K.mask;
   const top = ctx.createLinearGradient(0, 0, 0, H * 0.3);
-  top.addColorStop(0, 'rgba(0,0,0,0.35)'); top.addColorStop(1, 'rgba(0,0,0,0)');
+  top.addColorStop(0, 'rgba(' + m + ',' + K.maskTop + ')'); top.addColorStop(1, 'rgba(' + m + ',0)');
   ctx.fillStyle = top; ctx.fillRect(0, 0, W, H * 0.3);
   const bot = ctx.createLinearGradient(0, H * 0.6, 0, H);
-  bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(1, 'rgba(0,0,0,0.55)');
+  bot.addColorStop(0, 'rgba(' + m + ',0)'); bot.addColorStop(1, 'rgba(' + m + ',' + K.maskBot + ')');
   ctx.fillStyle = bot; ctx.fillRect(0, H * 0.6, W, H * 0.4);
   return art;
 }
 
-module.exports = { get, draw, AMBER, PAPER, INK };
+module.exports = { get, draw, colors, whenReady, bandY, AMBER, PAPER, INK };
 
 });
 __def("js/main.js", function (module, exports, require) {
@@ -2523,8 +2563,15 @@ const HA = require('./homeart.js');
 
 module.exports = function (app) {
   app.TITLE = '数独'; // 名字定了以后改这里
-  const H0 = C.HOME;
-  Object.defineProperty(app, 'titleY', { get: () => Math.max(app.headerY + app.headerH + 46, app.H * 0.175) });
+  let H0 = C.HOME; // 每帧按主页图换（暗底 / 亮底）
+  // 游戏名的位置：主页图上方有空白纸边的，放在那条边的正中（不压到九宫）；代码占位图照旧
+  Object.defineProperty(app, 'titleY', {
+    get: () => {
+      const band = HA.bandY(app.W, app.H, app.dpr);
+      if (band) return Math.max(app.headerY + app.headerH / 2 + 6, (app.headerY + band) / 2);
+      return Math.max(app.headerY + app.headerH + 46, app.H * 0.175);
+    },
+  });
   let coldStart = true; // 冷启动的那一次：亮的那块「啪」地点亮（0.3 秒，不拦操作）
 
   // 大按钮写什么：有没做完的一局 → 继续；新手引导没走完 → 接着学；其他 → 新游戏（直接开推荐那一档）
@@ -2598,6 +2645,7 @@ module.exports = function (app) {
     draw(ctx, t) {
       const W = app.W, H = app.H;
       const art = HA.draw(ctx, W, H, app.dpr);
+      H0 = HA.colors();
       const L = art.lit, e = t - this.t0;
       // 亮的那一块：一团很淡的琥珀光，4 秒一次呼吸
       ctx.save();
@@ -2613,7 +2661,7 @@ module.exports = function (app) {
           if (!this.dinged) { this.dinged = true; app.sound('bell9', 0.3); }
           const k = 1 - (e - 100) / 300;
           ctx.save(); ctx.globalAlpha = 0.25 * k;
-          ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(L.x, L.y, L.s * (1 + (1 - k) * 0.8), 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = H0.flash; ctx.beginPath(); ctx.arc(L.x, L.y, L.s * (1 + (1 - k) * 0.8), 0, Math.PI * 2); ctx.fill();
           ctx.restore();
         }
       }
@@ -3963,13 +4011,17 @@ module.exports = function (app) {
 
   app.scenes.welcome = {
     draw(ctx, t) {
-      const th = app.th, W = app.W, H = app.H, H0 = require('./config.js').HOME;
-      require('./homeart.js').draw(ctx, W, H, app.dpr);
+      const W = app.W, H = app.H, HA = require('./homeart.js');
+      HA.draw(ctx, W, H, app.dpr);
+      const H0 = HA.colors();
       ui.text(ctx, app.TITLE, W / 2, app.titleY, 44, H0.title, 'center', 800);
       // 下半屏一块深色面板：「你玩过数独吗？」+ 三张卡（第一次打开才有）
-      const h = 84, gap = 10, panelH = 54 + 3 * (h + gap) + 30;
-      let y = Math.max(H * 0.5, app.bottom - panelH);
-      ctx.fillStyle = 'rgba(8,11,10,0.55)'; ctx.fillRect(0, y - 16, W, H - y + 16);
+      // 小屏（iPhone SE）三张卡放不下就把卡压矮一点，面板最高到屏幕 44% 处（不压住图里亮的那一块）
+      const gap = 10, top = H * 0.44;
+      const h = Math.max(64, Math.min(84, Math.floor((app.bottom - top - 84 - 3 * gap) / 3)));
+      const panelH = 54 + 3 * (h + gap) + 30;
+      let y = Math.max(top, app.bottom - panelH);
+      ctx.fillStyle = H0.panel; ctx.fillRect(0, y - 16, W, H - y + 16);
       ui.text(ctx, '你玩过数独吗？', W / 2, y + 14, 20, H0.title, 'center', 700);
       y += 40;
       CARDS.forEach((c, i) => {
@@ -3977,8 +4029,8 @@ module.exports = function (app) {
         const on = ui.button({ id: 'wel-' + c.id, x: 20, y: cy, w: W - 40, h, onTap: () => choose(c.id) });
         ctx.save();
         if (on) { ctx.translate(W / 2, cy + h / 2); ctx.scale(0.98, 0.98); ctx.translate(-W / 2, -cy - h / 2); }
-        ui.fillRR(ctx, 20, cy, W - 40, h, 18, on ? 'rgba(38,80,83,0.92)' : 'rgba(20,28,27,0.9)');
-        ui.rr(ctx, 20, cy, W - 40, h, 18); ctx.strokeStyle = 'rgba(224,176,64,0.35)'; ctx.lineWidth = 1; ctx.stroke();
+        ui.fillRR(ctx, 20, cy, W - 40, h, 18, on ? H0.cardOn : H0.card);
+        ui.rr(ctx, 20, cy, W - 40, h, 18); ctx.strokeStyle = H0.cardLine; ctx.lineWidth = 1; ctx.stroke();
         ctx.beginPath(); ctx.arc(62, cy + h / 2, 22, 0, Math.PI * 2); ctx.fillStyle = 'rgba(224,176,64,0.16)'; ctx.fill();
         ui.icons[c.icon](ctx, 62, cy + h / 2, 24, H0.amber);
         ui.text(ctx, c.title, 100, cy + h / 2 - 12, 19, H0.title, 'left', 700);

@@ -124,7 +124,21 @@ module.exports = function (app) {
   // ---------- 开场：游戏名亮相（第一次打开，2.6 秒）----------
   // 黑 → 暗方块淡入（对准主页图里亮的那一块）→ 呼吸 → 「啪」亮成琥珀 + 白闪里硬切成主页图 → 镜头拉回 → 游戏名弹出
   app.cutOpen = (onEnd) => {
-    const art = require('./homeart.js').get(app.W, app.H, app.dpr);
+    // 主页图（Midjourney）是异步加载的：先黑屏等它（最多 2.5 秒），开场才对得准亮的那一块，播完也接得上同一张图
+    const HA = require('./homeart.js');
+    let waiting = true;
+    const black = { cut: true, live: () => waiting, draw(ctx) { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, app.W, app.H); } };
+    app.push(black);
+    black.t0 = P.now() - 1000;
+    HA.whenReady(app.W, app.H, app.dpr, () => {
+      waiting = false;
+      const i = app.overlays.indexOf(black);
+      if (i >= 0) app.overlays.splice(i, 1);
+      playOpen(HA, onEnd);
+    }, 2500); // 微信里图在包内，几乎瞬间到；网页版走网络，多等一会儿
+  };
+  function playOpen(HA, onEnd) {
+    const art = HA.get(app.W, app.H, app.dpr);
     const L = art.lit, W = app.W, H = app.H;
     const tsz = Math.round(L.s * 1.05);
     const images = { home: art.canvas, dark: tileImg(tsz, DARKT), lit: tileImg(tsz, AMBER) };
@@ -148,14 +162,14 @@ module.exports = function (app) {
                { at: 0, fx: 'particles', preset: 'spark', n: 16, origin: pos, z: 3 }, { at: 0, sfx: 'lamp' }] },
         { id: 'pose', type: 'pose', dur: 60,
           fx: [{ at: 0, fx: 'camera', to: 1, dur: 40, ease: 'out', focus: pos },
-               { at: 10, fx: 'text', str: app.TITLE, in: 'pop', pos: [0.5, app.titleY / H], size: 44, color: PAPER, stroke: 'rgba(0,0,0,0)', dur: 50 },
+               { at: 10, fx: 'text', str: app.TITLE, in: 'pop', pos: [0.5, app.titleY / H], size: 44, color: HA.colors().title, stroke: 'rgba(0,0,0,0)', dur: 50 },
                { at: 10, sfx: 'bell9' }, { at: 0, fx: 'particles', preset: 'dust', n: 8, z: 4, dur: 60 }] },
       ],
     };
     store.data.seen.open = true;
     store.save();
     return app.playCut(tl, images, { onEnd });
-  };
+  }
 
   // ---------- 学完一课（1.5 秒，短版 0.8 秒）----------
   // 压暗 → 停 → 写着课号的方块从上面砸到正中 → 咚 → 七个小点第 n 个点亮 +「学会了 · 排除法」→ 纸色一闪

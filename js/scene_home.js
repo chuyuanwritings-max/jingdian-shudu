@@ -12,8 +12,15 @@ const HA = require('./homeart.js');
 
 module.exports = function (app) {
   app.TITLE = '数独'; // 名字定了以后改这里
-  const H0 = C.HOME;
-  Object.defineProperty(app, 'titleY', { get: () => Math.max(app.headerY + app.headerH + 46, app.H * 0.175) });
+  let H0 = C.HOME; // 每帧按主页图换（暗底 / 亮底）
+  // 游戏名的位置：主页图上方有空白纸边的，放在那条边的正中（不压到九宫）；代码占位图照旧
+  Object.defineProperty(app, 'titleY', {
+    get: () => {
+      const band = HA.bandY(app.W, app.H, app.dpr);
+      if (band) return Math.max(app.headerY + app.headerH / 2 + 6, (app.headerY + band) / 2);
+      return Math.max(app.headerY + app.headerH + 46, app.H * 0.175);
+    },
+  });
   let coldStart = true; // 冷启动的那一次：亮的那块「啪」地点亮（0.3 秒，不拦操作）
 
   // 大按钮写什么：有没做完的一局 → 继续；新手引导没走完 → 接着学；其他 → 新游戏（直接开推荐那一档）
@@ -87,6 +94,7 @@ module.exports = function (app) {
     draw(ctx, t) {
       const W = app.W, H = app.H;
       const art = HA.draw(ctx, W, H, app.dpr);
+      H0 = HA.colors();
       const L = art.lit, e = t - this.t0;
       // 亮的那一块：一团很淡的琥珀光，4 秒一次呼吸
       ctx.save();
@@ -102,7 +110,7 @@ module.exports = function (app) {
           if (!this.dinged) { this.dinged = true; app.sound('bell9', 0.3); }
           const k = 1 - (e - 100) / 300;
           ctx.save(); ctx.globalAlpha = 0.25 * k;
-          ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(L.x, L.y, L.s * (1 + (1 - k) * 0.8), 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = H0.flash; ctx.beginPath(); ctx.arc(L.x, L.y, L.s * (1 + (1 - k) * 0.8), 0, Math.PI * 2); ctx.fill();
           ctx.restore();
         }
       }

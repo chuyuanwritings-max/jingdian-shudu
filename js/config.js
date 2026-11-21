@@ -1,6 +1,6 @@
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.7';
+const VERSION = '0.7.1';
 
 // 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
 // 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
@@ -99,8 +99,16 @@ const CUT = {
   flashMax: 0.7, flashChalk: 0.5,
 };
 // 主页图：Midjourney 的图到了以后填 src，并量出「亮的那一块」在图上的中心和边长（占图宽的比例）
-const HOME_ART = { src: '', lit: null };
-// 主页的颜色跟着主页图走，不跟主题走
-const HOME = { title: '#F3EAD2', button: '#E0B040', buttonText: '#141A17', sub: 'rgba(243,234,210,0.72)', amber: '#E0B040' };
+// tone：图是暗底（dark）还是亮底（light），主页的字、图标、遮罩跟着换
+const HOME_ART = { src: 'images/bg_home.jpg', lit: { cx: 0.4501, cy: 0.3570, s: 0.1495 }, band: 0.165, tone: 'light' }; // band：图上方那条空白纸边的下沿（占图高），游戏名放在这条边里 // 2026-11-21 Cc 选 A2 第 1 张；亮块按原图 1632×2912 像素量出
+// 主页的颜色跟着主页图走，不跟主题走。暗底：纸白字 + 琥珀按钮；亮底（A2）：墨黑字 + 墨黑按钮，琥珀只留给亮的那一块
+const HOME = {
+  title: '#F3EAD2', button: '#E0B040', buttonText: '#141A17', sub: 'rgba(243,234,210,0.72)', amber: '#E0B040',
+  mask: '0,0,0', maskTop: 0.35, maskBot: 0.55, panel: 'rgba(8,11,10,0.55)', card: 'rgba(20,28,27,0.9)', cardOn: 'rgba(38,80,83,0.92)', cardLine: 'rgba(224,176,64,0.35)', flash: '#FFFFFF',
+};
+const HOME_LIGHT = {
+  title: '#141A17', button: '#141A17', buttonText: '#EEE6D0', sub: 'rgba(20,26,23,0.62)', amber: '#E0B040',
+  mask: '238,230,208', maskTop: 0.55, maskBot: 0.7, panel: 'rgba(242,232,212,0.95)', card: 'rgba(246,241,228,0.96)', cardOn: 'rgba(224,214,188,0.98)', cardLine: 'rgba(20,26,23,0.22)', flash: '#E0B040',
+};
 
-module.exports = { CUT, HOME_ART, HOME, VERSION, THEMES, SCORE, speedMultiplier, RULES, ADS, DAILY_TIER };
+module.exports = { CUT, HOME_ART, HOME, HOME_LIGHT, VERSION, THEMES, SCORE, speedMultiplier, RULES, ADS, DAILY_TIER };

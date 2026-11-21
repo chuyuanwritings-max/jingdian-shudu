@@ -32,13 +32,17 @@ module.exports = function (app) {
 
   app.scenes.welcome = {
     draw(ctx, t) {
-      const th = app.th, W = app.W, H = app.H, H0 = require('./config.js').HOME;
-      require('./homeart.js').draw(ctx, W, H, app.dpr);
+      const W = app.W, H = app.H, HA = require('./homeart.js');
+      HA.draw(ctx, W, H, app.dpr);
+      const H0 = HA.colors();
       ui.text(ctx, app.TITLE, W / 2, app.titleY, 44, H0.title, 'center', 800);
       // 下半屏一块深色面板：「你玩过数独吗？」+ 三张卡（第一次打开才有）
-      const h = 84, gap = 10, panelH = 54 + 3 * (h + gap) + 30;
-      let y = Math.max(H * 0.5, app.bottom - panelH);
-      ctx.fillStyle = 'rgba(8,11,10,0.55)'; ctx.fillRect(0, y - 16, W, H - y + 16);
+      // 小屏（iPhone SE）三张卡放不下就把卡压矮一点，面板最高到屏幕 44% 处（不压住图里亮的那一块）
+      const gap = 10, top = H * 0.44;
+      const h = Math.max(64, Math.min(84, Math.floor((app.bottom - top - 84 - 3 * gap) / 3)));
+      const panelH = 54 + 3 * (h + gap) + 30;
+      let y = Math.max(top, app.bottom - panelH);
+      ctx.fillStyle = H0.panel; ctx.fillRect(0, y - 16, W, H - y + 16);
       ui.text(ctx, '你玩过数独吗？', W / 2, y + 14, 20, H0.title, 'center', 700);
       y += 40;
       CARDS.forEach((c, i) => {
@@ -46,8 +50,8 @@ module.exports = function (app) {
         const on = ui.button({ id: 'wel-' + c.id, x: 20, y: cy, w: W - 40, h, onTap: () => choose(c.id) });
         ctx.save();
         if (on) { ctx.translate(W / 2, cy + h / 2); ctx.scale(0.98, 0.98); ctx.translate(-W / 2, -cy - h / 2); }
-        ui.fillRR(ctx, 20, cy, W - 40, h, 18, on ? 'rgba(38,80,83,0.92)' : 'rgba(20,28,27,0.9)');
-        ui.rr(ctx, 20, cy, W - 40, h, 18); ctx.strokeStyle = 'rgba(224,176,64,0.35)'; ctx.lineWidth = 1; ctx.stroke();
+        ui.fillRR(ctx, 20, cy, W - 40, h, 18, on ? H0.cardOn : H0.card);
+        ui.rr(ctx, 20, cy, W - 40, h, 18); ctx.strokeStyle = H0.cardLine; ctx.lineWidth = 1; ctx.stroke();
         ctx.beginPath(); ctx.arc(62, cy + h / 2, 22, 0, Math.PI * 2); ctx.fillStyle = 'rgba(224,176,64,0.16)'; ctx.fill();
         ui.icons[c.icon](ctx, 62, cy + h / 2, 24, H0.amber);
         ui.text(ctx, c.title, 100, cy + h / 2 - 12, 19, H0.title, 'left', 700);
