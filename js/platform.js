@@ -221,6 +221,15 @@ function copyText(text) {
   return false;
 }
 
+// 读一张图（主页图）。微信用 wx.createImage，浏览器用 Image
+function loadImage(src, cb) {
+  try {
+    const img = isWx ? wx.createImage() : new Image();
+    img.onload = () => cb(img);
+    img.onerror = () => cb(null);
+    img.src = src;
+  } catch (e) { cb(null); }
+}
 function exposeForTest(name, value) {
   if (!isWx && typeof window !== 'undefined') window[name] = value;
 }
@@ -229,5 +238,5 @@ module.exports = {
   isWx, setup, makeCanvas, now, nextFrame, onHide, vibrate, setVibrate, showRewardedAd,
   hasOpenData, uploadScore, openDataCanvas, postOpenData, enableShare,
   load, save, exposeForTest, sound, unlockAudio, setMuted,
-  launchQuery, onShow, canvasImage, shareLink, shareToWx, systemShare, copyText,
+  loadImage, launchQuery, onShow, canvasImage, shareLink, shareToWx, systemShare, copyText,
 };

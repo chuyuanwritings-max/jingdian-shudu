@@ -41,6 +41,30 @@ const RECIPES = {
   correct: { len: 0.5, f: (t) => seq([880, 1319], 0.07, bell, 0.16)(t) * 0.35 },       // 教学里做对
 };
 
+
+// ---------- 0.7 过场用（照 主页与过场设计_Fable_1.0.md 2.10）----------
+// 大调音阶：铃阶 1–8 给「某个数 9 个填完」，第 9 个音留给通关和弦的根音
+const SCALE = [523, 587, 659, 698, 784, 880, 988, 1047, 1175];
+SCALE.forEach((f, i) => {
+  RECIPES['bell' + (i + 1)] = { len: 0.6, f: (t) => bell(f, t, 0.4) * 0.42 };
+  // 嗒阶：木块敲击，一次升一个音（通关波浪、七课连打）
+  RECIPES['tick' + (i + 1)] = { len: 0.14, f: (t) => noise() * env(t, 0.0008, 0.005) * 0.35 + mallet(f * 0.5, t, 0.05) * 0.45 };
+});
+Object.assign(RECIPES, {
+  // 灯亮：开关「咔」+ 0.3 秒往上滑的柔和正弦
+  lamp: { len: 0.5, f: (t) => noise() * env(t, 0.0005, 0.002) * 0.6 + Math.sin(2 * Math.PI * (300 * t + 700 * t * t)) * env(t, 0.02, 0.2) * 0.3 },
+  // 咚：约 70 赫兹的低鼓，开头叠一下木头「嗒」
+  dong: { len: 0.6, f: (t) => sin(70 + 30 * Math.exp(-t * 20), t) * env(t, 0.002, 0.25) * 0.7 + noise() * env(t, 0.0008, 0.006) * 0.3 + mallet(330, t, 0.04) * 0.2 },
+  // 嗖：滤过的噪声扫过去
+  whoosh: { len: 0.35, f: (t) => { let s = 0; for (let k = 0; k < 3; k++) s += noise(); return s * 0.12 * Math.sin(Math.PI * Math.min(1, t / 0.35)); } },
+  // 和弦：三个铃音叠成大三和弦（根音 = 音阶第 9 个音），不要鼓点
+  chord: { len: 1.2, f: (t) => (bell(1175, t, 0.9) + bell(1480, t, 0.9) + bell(1760, t, 0.9)) * 0.2 },
+  // 嗡起：0.6 秒由低到高的正弦，很小声
+  hum: { len: 0.7, f: (t) => Math.sin(2 * Math.PI * (110 * t + 260 * t * t)) * Math.sin(Math.PI * Math.min(1, t / 0.7)) * 0.18 },
+  // 轻嗒：结算页落定
+  soft: { len: 0.1, f: (t) => mallet(880, t, 0.03) * 0.25 },
+});
+
 function make(name, sr) {
   const r = RECIPES[name];
   if (!r) return null;

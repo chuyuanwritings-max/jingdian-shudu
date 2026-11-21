@@ -85,10 +85,11 @@ function linesLayer(geo, th, dpr, hand) {
 
 // 数字方块：影子（两层半透明，不用模糊，省电）→ 厚边 → 面 → 顶上一条高光 → 数字。
 // 刚放下的那 0.32 秒：从上面大一点落下（影子由远变近），落地压扁一下再弹回。
-function tile(ctx, th, m, cx, cy, cs, v, wrong, p0, t, same) {
+function tile(ctx, th, m, cx, cy, cs, v, wrong, p0, t, same, gold, extra) {
   const style = m.tileStyle === 'B' ? 'B' : 'A';
   const pal = th[style === 'B' ? 'tileB' : 'tileA'] || ['#FFFFFF', '#CCCCCC', th.user];
   let body = pal[0], edge = pal[1], ink = pal[2];
+  if (gold) { body = '#E9C25A'; edge = '#A9832A'; ink = '#3A2A08'; } // 金面：某个数填完、通关波浪
   if (wrong) {
     if (style === 'B') { body = th.wrong; edge = Paper.rgba('#000000', 0.35); ink = '#FFFFFF'; }
     else { body = th.boardDark ? '#5A3434' : '#FCE6E3'; edge = th.boardDark ? '#2A1616' : '#E2B2AC'; ink = th.wrong; }
@@ -100,6 +101,7 @@ function tile(ctx, th, m, cx, cy, cs, v, wrong, p0, t, same) {
     if (e >= 0 && e < 150) { const q = e / 150; lift = 12 * (1 - q * q); sx = sy = 1.22 - 0.22 * q * q; }
     else if (e >= 150 && e < 330) { const q = (e - 150) / 180; const b = Math.sin(q * Math.PI) * (1 - q); sx = 1 + 0.09 * b; sy = 1 - 0.11 * b; }
   }
+  if (extra && extra !== 1) { sx *= extra; sy *= extra; }
   const w = cs - inset * 2, h = cs - inset * 2 - thick;
   const x0 = cx + cs / 2, yb = cy + inset + h + thick; // 方块底边中点：压扁、放大都以它为准
   // 影子：离地越高越淡、越偏
@@ -208,15 +210,21 @@ function draw(ctx, th, geo, m, dpr) {
       const p = (t - h0) / 340;
       if (p >= 0 && p < 1) oy = -6 * Math.sin(p * Math.PI) * (1 - p * 0.4);
     }
+    // 金面（某个数填完、通关波浪）和单格缩放（「出手」放大、呼吸）
+    const g0 = m.gold && m.gold[k];
+    const gold = !!g0 && t >= g0[0] && t < g0[1];
+    const csc = m.cellScale ? m.cellScale(k, t) : 1;
     if (v && m.given[k]) {
-      // 题目原有的数字：印在纸上，平的
+      // 题目原有的数字：印在纸上，平的（金面时整格铺金）
       ctx.save();
       ctx.translate(r.x + cs / 2 + ox, r.y + cs / 2 + 1 + oy);
-      ui.text(ctx, String(v), 0, 0, fs, th.given, 'center', 500);
+      if (csc !== 1) ctx.scale(csc, csc);
+      if (gold) ui.fillRR(ctx, -cs / 2 + 2, -cs / 2 + 1, cs - 4, cs - 4, 6, '#E9C25A');
+      ui.text(ctx, String(v), 0, 0, fs, gold ? '#3A2A08' : th.given, 'center', 500);
       ctx.restore();
     } else if (v) {
       // 自己填的数字：一块有厚度的方块
-      tile(ctx, th, m, r.x + ox, r.y + oy, cs, v, m.wrong && m.wrong(k), m.pops && m.pops[k], t, digit === v && m.sameHighlight !== false && k !== sel);
+      tile(ctx, th, m, r.x + ox, r.y + oy, cs, v, m.wrong && m.wrong(k), m.pops && m.pops[k], t, digit === v && m.sameHighlight !== false && k !== sel && !gold, gold, csc);
     } else if (m.notes && m.notes[k]) {
       for (let d = 1; d <= 9; d++) {
         if (!(m.notes[k] & S.bit(d))) continue;

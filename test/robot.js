@@ -27,8 +27,18 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     const r = rs.find((x) => x.id === id);
     return r ? { x: r.x + r.w / 2, y: r.y + r.h / 2 } : null;
   }, id);
+  const skipCuts = async () => {
+    for (let i = 0; i < 20; i++) {
+      const pt = await regionOf('cs-skip');
+      if (!pt) return;
+      await page.mouse.click(pt.x, pt.y);
+      await page.waitForTimeout(120);
+    }
+  };
+  const more = async (i) => { await tap('home-more', 350); await tap('more-' + i, 400); };
   const tap = async (id, wait) => {
     await page.waitForTimeout(30);
+    if (id !== 'cs-skip') await skipCuts();
     const p = await regionOf(id);
     if (!p) throw new Error('找不到按钮 ' + id + '（场景 ' + (await scene()) + '）');
     await click(p, wait === undefined ? 250 : wait);
@@ -57,7 +67,11 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
 
   // ---------- 1. 第一次打开：先问你是什么级别 ----------
   ok((await scene()) === 'welcome', '第一次打开先问「你玩过数独吗？」');
-  await shot('01_第一次打开_选级别');
+  await page.waitForTimeout(1200);
+  await shot('01_开场过场');
+  ok(await ev(() => window.__app.overlays.some((o) => o.cut)), '第一次打开先播开场过场');
+  await skipCuts();
+  await shot('01b_第一次打开_选级别');
   await tap('wel-new', 400);
   ok((await scene()) === 'lesson', '选「没玩过」→ 第 1 课规则');
   await runLesson({ '0,end': '02_没玩过_第1课规则' });
@@ -81,7 +95,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await tap('hdr-back', 400);
 
   // ---------- 2. 其余六课（含新加的区块排除、数对）----------
-  await tap('home-lessons', 400);
+  await more(0);
   await shot('07_教学目录');
   const LESSON_SHOTS = { 2: { '1,end': '08_排除法_红线讲因果' }, 3: { '1,end': '09_唯一候选' }, 4: { '1,end': '10_笔记_自动擦掉' }, 5: { '1,end': '11_区块排除', '2,0': '12_区块排除_练习' }, 6: { '1,end': '13_数对', '2,0': '14_数对_练习' } };
   for (let li = 1; li < 7; li++) {
@@ -98,11 +112,11 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await tap('hdr-back', 400);
   ok((await scene()) === 'home', '回首页');
   await shot('09_首页');
-  await tap('home-brain', 400);
+  await more(4);
   await shot('10_数独练脑');
   ok((await scene()) === 'brain', '练脑页能打开');
   await tap('hdr-back', 400);
-  await tap('home-settings', 500);
+  await more(5);
   await shot('11_设置');
   await tap('set-look', 500);
   ok((await scene()) === 'look', '设置 → 主题页');
@@ -140,15 +154,20 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
       if (n === 10 && shotPrefix) { await page.waitForTimeout(150); await shot(shotPrefix + '_玩到一半'); }
       if ((await ev(() => window.__app.overlays.length)) > 0) break;
     }
-    // 通关庆祝约 2.8 秒；中途截一张
+    // 通关：第一段在棋盘上（顿、金色波浪、长停），第二段过场（收成金方块、完成！）。中途截两张，然后等到结算
     await page.waitForTimeout(1300);
-    if (shotPrefix) await shot(shotPrefix + '_通关庆祝');
-    await page.waitForTimeout(1900);
+    if (shotPrefix) await shot(shotPrefix + '_通关_金色波浪');
+    for (let i = 0; i < 40 && (await scene()) !== 'result'; i++) {
+      await page.waitForTimeout(250);
+      if (shotPrefix && i === 9) await shot(shotPrefix + '_通关_完成');
+      if (i > 24) await skipCuts();
+    }
+    await page.waitForTimeout(450);
     return scene();
   }
 
   // 入门：开新游戏走首页按钮 → 选难度
-  await tap('home-new', 400);
+  await tap('home-link', 400);
   await shot('12_选难度');
   await tap('tier-0', 600);
   ok((await scene()) === 'play', '选「入门」开局');
@@ -216,7 +235,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await page.reload();
   await page.waitForTimeout(700);
   ok((await ev(() => !!window.__store.data.current)), '刷新以后存档还在');
-  await tap('home-continue', 500);
+  await tap('home-main', 500);
   ok((await scene()) === 'play', '「继续游戏」接着玩');
   const r0 = await solve('入门', '21_入门');
   ok(r0 === 'result', '入门 解完 → 结算');
@@ -232,7 +251,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await ev(() => { window.__store.data.lessons.pointing = false; window.__store.data.gateSeen = {}; });
   for (const [ti, name] of [[1, '简单'], [2, '中等'], [3, '困难']]) {
     await tap('res-home', 400);
-    await tap('home-new', 400);
+    await tap('home-link', 400);
     if (ti === 2) await shot('16_选难度_推荐和新招');
     await tap('tier-' + ti, 600);
     if (ti === 2) {
@@ -256,7 +275,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
 
   // ---------- 5. 错 3 次 → 看广告再给一次机会 ----------
   await tap('res-home', 400);
-  await tap('home-new', 400);
+  await tap('home-link', 400);
   await tap('tier-4', 600);
   b = await G.board();
   let wrongs = 0;
@@ -291,10 +310,10 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
 
   // ---------- 7. 战绩、好友榜 ----------
   await tap('hdr-back', 400);
-  await tap('home-stats', 400);
+  await more(2);
   await shot('29_战绩');
   await tap('hdr-back', 400);
-  await tap('home-rank', 400);
+  await more(3);
   await shot('30_好友榜_浏览器里');
   ok((await scene()) === 'rank', '好友榜页能打开');
 
@@ -316,7 +335,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await p2.waitForTimeout(700);
   const ev2 = (fn, arg) => p2.evaluate(fn, arg);
   const click2 = async (pt, w) => { await p2.mouse.click(pt.x, pt.y); await p2.waitForTimeout(w === undefined ? 80 : w); };
-  const tap2 = async (id, w) => { await p2.waitForTimeout(30); const pt = await ev2((id) => { const r = window.__regions().find((x) => x.id === id); return r ? { x: r.x + r.w / 2, y: r.y + r.h / 2 } : null; }, id); if (!pt) throw new Error('朋友端找不到按钮 ' + id); await click2(pt, w === undefined ? 300 : w); };
+  const tap2 = async (id, w) => { await p2.waitForTimeout(30); for (let i = 0; i < 20; i++) { const sk = await ev2(() => { const r = window.__regions().find((x) => x.id === 'cs-skip'); return r ? { x: r.x + 5, y: r.y + 5 } : null; }); if (!sk || id === 'cs-skip') break; await p2.mouse.click(sk.x, sk.y); await p2.waitForTimeout(120); } const pt = await ev2((id) => { const r = window.__regions().find((x) => x.id === id); return r ? { x: r.x + r.w / 2, y: r.y + r.h / 2 } : null; }, id); if (!pt) throw new Error('朋友端找不到按钮 ' + id); await click2(pt, w === undefined ? 300 : w); };
   const shot2 = (n) => p2.screenshot({ path: path.join(SHOTS, n + '.png') });
   ok((await ev2(() => window.__app.sceneName)) === 'challenge', '朋友点开链接：直接到这一题的挑战页（不先进首页）');
   await shot2('30_朋友点开_挑战页');
@@ -346,7 +365,11 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     await click2(await ev2((k) => window.__app.testHooks.cellCenter(k), k), 20);
     await click2(await ev2((v) => window.__app.testHooks.padCenter(v), +b2.sol[k]), 25);
   }
-  await p2.waitForTimeout(3300);
+  for (let i = 0; i < 40 && (await ev2(() => window.__app.sceneName)) !== 'result'; i++) {
+    await p2.waitForTimeout(250);
+    if (i > 8) { const sk = await ev2(() => !!window.__regions().find((x) => x.id === 'cs-skip')); if (sk) await p2.mouse.click(30, 30); }
+  }
+  await p2.waitForTimeout(450);
   ok((await ev2(() => window.__app.sceneName)) === 'result', '朋友做完 → 结算');
   await shot2('32_朋友端_两人对比');
   await tap2('res-reply', 400);

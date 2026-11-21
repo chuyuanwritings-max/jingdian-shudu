@@ -174,7 +174,7 @@ module.exports = { create, input, erase, undo, findHint, fillHint, revive, count
 __def("js/config.js", function (module, exports, require) {
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.6.1';
+const VERSION = '0.7';
 
 // 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
 // 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
@@ -266,7 +266,845 @@ const ADS = {
 // 每日挑战：星期几出哪一档（0 = 星期日）
 const DAILY_TIER = [3, 1, 1, 2, 2, 3, 2];
 
-module.exports = { VERSION, THEMES, SCORE, speedMultiplier, RULES, ADS, DAILY_TIER };
+// 过场和主页（0.7，照 主页与过场设计_Fable_1.0.md）。帧数都是 60 帧每秒，还没上真机校，调手感只改这里
+const CUT = {
+  digit: { hold: 5, strike: 3, hit: 18, holdShort: 3, hitShort: 10, scale: 1.18 },   // 某个数 9 个填完（局内，不盖屏）
+  win: { freeze: 24, ring: 6, hold: 45, freezeShort: 10, poseShort: 36 },             // 通关第一段（棋盘上）
+  flashMax: 0.7, flashChalk: 0.5,
+};
+// 主页图：Midjourney 的图到了以后填 src，并量出「亮的那一块」在图上的中心和边长（占图宽的比例）
+const HOME_ART = { src: '', lit: null };
+// 主页的颜色跟着主页图走，不跟主题走
+const HOME = { title: '#F3EAD2', button: '#E0B040', buttonText: '#141A17', sub: 'rgba(243,234,210,0.72)', amber: '#E0B040' };
+
+module.exports = { CUT, HOME_ART, HOME, VERSION, THEMES, SCORE, speedMultiplier, RULES, ADS, DAILY_TIER };
+
+});
+__def("js/cuts.js", function (module, exports, require) {
+// 过场（0.7）：照「过场动画制作 1.0」的节拍语法 + 主页与过场设计_Fable_1.0.md 第二部分。
+// 主角是一块放大的数字方块，站在一束光里（不加手、不加角色）。一张新图都不用出：方块、光阵底、棋盘截图全部代码画，
+// 画在离屏画布上当「图」交给过场播放器（cutscene.js）。
+// 有四段：开场（第一次打开）、学完一课、升档学新招、通关第二段。局内「某个数填完」和通关第一段在 scene_play 里原地做。
+const P = require('./platform.js');
+const ui = require('./ui.js');
+const C = require('./config.js');
+const S = require('./sudoku.js');
+const store = require('./store.js');
+const { createCutscene } = require('./cutscene.js');
+
+const AMBER = { body: '#E0B040', edge: '#B0902E', ink: '#3A2A08' };
+const GOLD = { body: '#E9C25A', edge: '#A9832A', ink: '#3A2A08' };
+const DARKT = { body: '#1A2422', edge: '#0B100F', ink: '#5B6B66' };
+const GREY = { body: '#3A3F45', edge: '#22262A', ink: '#A7AEB6' };
+const PAPER = '#F3EAD2';
+const DARK = { cy: 0.45, inner: 0.22, outer: 0.62, strength: 0.8 };
+
+module.exports = function (app) {
+  // ---------- 代码画的「图」 ----------
+  // 一块大方块：面 + 厚边 + 顶上一条高光；上面写字 / 打勾 / 刻档位杠
+  function tileImg(size, pal, opts) {
+    opts = opts || {};
+    const d = app.dpr, thick = Math.round(size * 0.07), pad = Math.round(size * 0.06);
+    const w = size + pad * 2, h = size + thick + pad * 2;
+    const c = P.makeCanvas(Math.round(w * d), Math.round(h * d));
+    const g = c.getContext('2d');
+    g.setTransform(d, 0, 0, d, 0, 0);
+    const r = size * 0.14;
+    ui.fillRR(g, pad + 2, pad + thick + 4, size, size, r, 'rgba(0,0,0,0.35)');
+    ui.fillRR(g, pad, pad + thick, size, size, r, pal.edge);
+    ui.fillRR(g, pad, pad, size, size, r, pal.body);
+    ui.fillRR(g, pad + size * 0.1, pad + size * 0.05, size * 0.8, Math.max(2, size * 0.035), 2, 'rgba(255,255,255,0.4)');
+    const cx = pad + size / 2, cy = pad + size / 2;
+    if (opts.text) ui.text(g, opts.text, cx, cy + size * 0.02 - (opts.bars ? size * 0.06 : 0), size * (opts.text.length > 2 ? 0.24 : opts.text.length === 2 ? 0.34 : 0.56), pal.ink, 'center', 700);
+    if (opts.check) ui.icons.check(g, cx, cy - (opts.bars ? size * 0.08 : 0), size * 0.5, pal.ink, Math.max(3, size * 0.06));
+    if (opts.bars) {
+      // 档位杠：入门 1 道 … 大师 6 道，刻在方块下沿
+      // 扁扁的短横杠，一道一道排开（像军衔），不要像感叹号
+      const n = opts.bars, bw = size * (n > 3 ? 0.09 : 0.13), gap = size * 0.035, tot = n * bw + (n - 1) * gap;
+      for (let i = 0; i < n; i++) ui.fillRR(g, cx - tot / 2 + i * (bw + gap), pad + size * 0.83, bw, size * 0.035, 1.5, pal.ink);
+    }
+    return c;
+  }
+  // 光阵底：16 瓣放射纹（两种深浅，取当前主题彩色块的颜色），上面压一层很淡的九宫格线。代替戴夫的「比喻换底」
+  const raysCache = {};
+  function raysImg(th) {
+    const key = th.id + '|' + app.dpr;
+    if (raysCache[key]) return raysCache[key];
+    const s = 512, d = app.dpr, c = P.makeCanvas(s * d, s * d), g = c.getContext('2d');
+    g.setTransform(d, 0, 0, d, 0, 0);
+    const a = (th.tileB || [th.primary, th.text])[0], b = (th.tileB || [th.primary, th.text])[1];
+    g.fillStyle = b; g.fillRect(0, 0, s, s);
+    g.fillStyle = a;
+    for (let i = 0; i < 16; i += 2) {
+      const a0 = (i / 16) * Math.PI * 2, a1 = ((i + 1) / 16) * Math.PI * 2;
+      g.beginPath(); g.moveTo(s / 2, s / 2); g.lineTo(s / 2 + Math.cos(a0) * s, s / 2 + Math.sin(a0) * s); g.lineTo(s / 2 + Math.cos(a1) * s, s / 2 + Math.sin(a1) * s); g.closePath(); g.fill();
+    }
+    g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 2;
+    for (let i = 1; i < 3; i++) { g.beginPath(); g.moveTo((s * i) / 3, 0); g.lineTo((s * i) / 3, s); g.moveTo(0, (s * i) / 3); g.lineTo(s, (s * i) / 3); g.stroke(); }
+    raysCache[key] = c;
+    return c;
+  }
+  // 一行七个小点，第 lit 个（0 起）亮琥珀，前面学过的亮白
+  function dotsImg(done, lit) {
+    const d = app.dpr, w = 7 * 22, h = 16, c = P.makeCanvas(w * d, h * d), g = c.getContext('2d');
+    g.setTransform(d, 0, 0, d, 0, 0);
+    for (let i = 0; i < 7; i++) {
+      g.beginPath(); g.arc(11 + i * 22, 8, i === lit ? 6.5 : 5, 0, Math.PI * 2);
+      g.fillStyle = i === lit ? AMBER.body : done[i] ? 'rgba(243,234,210,0.85)' : 'rgba(243,234,210,0.22)';
+      g.fill();
+    }
+    return c;
+  }
+
+  // ---------- 播放 ----------
+  // 简洁动效 / 黑板主题：去掉震屏、全屏闪压低（主页与过场设计 2.2 第 5、8 条）
+  function tame(tl) {
+    const reduce = store.data.settings.reduceMotion;
+    const cap = app.th.id === 'chalk' ? C.CUT.flashChalk : C.CUT.flashMax;
+    const beats = tl.beats.map((b) => Object.assign({}, b, {
+      fx: (b.fx || []).filter((f) => !(reduce && (f.fx === 'shake' || f.fx === 'strobe' || (f.fx === 'camera' && f.steps)))).map((f) => {
+        if (f.fx === 'flash' && !f.paper) return Object.assign({}, f, { alpha: reduce ? Math.min(f.alpha || 0.7, 0.25) : Math.min(f.alpha || 0.7, cap) });
+        return f;
+      }),
+    }));
+    return Object.assign({}, tl, { beats });
+  }
+  // 播一段：盖在当前画面上（播放器每帧整屏涂底），点一下跳过；播完 onEnd
+  app.playCut = (timeline, images, opts) => {
+    opts = opts || {};
+    const short = !!opts.short || store.data.settings.reduceMotion;
+    let ended = false, last = P.now();
+    const cs = createCutscene({
+      ctx: app.ctx, width: app.W, height: app.H, images, timeline: tame(timeline), short,
+      onSfx: (name) => {
+        if (name === 'dong' || name === 'lamp') app.buzz('heavy');
+        app.sound(name, name === 'hum' ? 0.35 : undefined);
+      },
+      onEnd: () => setTimeout(finish, 0),
+    });
+    const ov = {
+      cut: true,
+      live: () => !ended,
+      draw(ctx, t) {
+        cs.update(Math.max(0, t - last));
+        last = t;
+        cs.draw();
+        ui.button({ id: 'cs-skip', x: 0, y: 0, w: app.W, h: app.H, silent: true, onDown: () => cs.skip() });
+      },
+    };
+    function finish() {
+      if (ended) return;
+      ended = true;
+      const i = app.overlays.indexOf(ov);
+      if (i >= 0) { app.overlays.splice(i, 1); app.redraw(); }
+      if (opts.onEnd) opts.onEnd();
+    }
+    app.push(ov);
+    ov.t0 = P.now() - 1000; // 不要淡入：过场自己管画面
+    return cs;
+  };
+
+  // ---------- 开场：游戏名亮相（第一次打开，2.6 秒）----------
+  // 黑 → 暗方块淡入（对准主页图里亮的那一块）→ 呼吸 → 「啪」亮成琥珀 + 白闪里硬切成主页图 → 镜头拉回 → 游戏名弹出
+  app.cutOpen = (onEnd) => {
+    const art = require('./homeart.js').get(app.W, app.H, app.dpr);
+    const L = art.lit, W = app.W, H = app.H;
+    const tsz = Math.round(L.s * 1.05);
+    const images = { home: art.canvas, dark: tileImg(tsz, DARKT), lit: tileImg(tsz, AMBER) };
+    const pos = [L.x / W, L.y / H], hh = (images.dark.height / app.dpr) / H;
+    const tl = {
+      id: 'open', fps: 60, bg: '#000000',
+      layers: [
+        { id: 'home', img: 'home', fit: 'cover', z: 0, visible: false },
+        { id: 'tile', img: 'dark', z: 1, pos, anchor: [0.5, 0.5], h: hh, alpha: 0 },
+      ],
+      beats: [
+        { id: 'black', type: 'hold', dur: 12 },
+        { id: 'dark-in', type: 'darkIn', dur: 24, tracks: [{ layer: 'tile', prop: 'alpha', from: 0, to: 1, dur: 24, ease: 'out' }], fx: [{ at: 0, sfx: 'hum' }] },
+        { id: 'hold', type: 'hold', dur: 40, tracks: [{ layer: 'tile', prop: 'scale', from: 1, to: 1.02, ease: 'breathe' }],
+          fx: [{ at: 0, fx: 'glow', origin: pos, r0: 14, r1: 18, dur: 40, color: AMBER.body, z: 0.5 }] },
+        { id: 'strike', type: 'strike', dur: 3, frames: [{ f: 0, layer: 'tile', smear: { sx: 1.12, sy: 0.82, lines: 6 } }, { f: 2, layer: 'tile', img: 'lit' }] },
+        { id: 'impact', type: 'impact', dur: 15,
+          frames: [{ f: 0, layer: 'home', visible: true }, { f: 0, layer: 'tile', visible: false }],
+          fx: [{ at: 0, fx: 'flash', alpha: 0.7, decay: 15 }, { at: 0, fx: 'shake', amp: 4, dur: 8 },
+               { at: 0, fx: 'camera', steps: [1.08, 1.18, 1.3], stepDur: 3, focus: pos },
+               { at: 0, fx: 'particles', preset: 'spark', n: 16, origin: pos, z: 3 }, { at: 0, sfx: 'lamp' }] },
+        { id: 'pose', type: 'pose', dur: 60,
+          fx: [{ at: 0, fx: 'camera', to: 1, dur: 40, ease: 'out', focus: pos },
+               { at: 10, fx: 'text', str: app.TITLE, in: 'pop', pos: [0.5, app.titleY / H], size: 44, color: PAPER, stroke: 'rgba(0,0,0,0)', dur: 50 },
+               { at: 10, sfx: 'bell9' }, { at: 0, fx: 'particles', preset: 'dust', n: 8, z: 4, dur: 60 }] },
+      ],
+    };
+    store.data.seen.open = true;
+    store.save();
+    return app.playCut(tl, images, { onEnd });
+  };
+
+  // ---------- 学完一课（1.5 秒，短版 0.8 秒）----------
+  // 压暗 → 停 → 写着课号的方块从上面砸到正中 → 咚 → 七个小点第 n 个点亮 +「学会了 · 排除法」→ 纸色一闪
+  app.cutLesson = (index, name, opts) => {
+    const th = app.th, H = app.H, W = app.W;
+    const pal = th.tileB ? { body: th.tileB[0], edge: th.tileB[1], ink: th.tileB[2] } : AMBER;
+    const done = require('./tutorial.js').LESSONS.map((L) => !!store.data.lessons[L.id]);
+    const before = done.slice(); before[index] = false;
+    const sz = Math.round(Math.min(W * 0.42, 170));
+    const images = { tile: tileImg(sz, opts && opts.all ? GOLD : pal, { text: opts && opts.all ? '七招' : String(index + 1) }), dotsA: dotsImg(before, -1), dotsB: dotsImg(done, index) };
+    const hh = (images.tile.height / app.dpr) / H;
+    const tl = {
+      id: 'lesson', fps: 60, bg: '#0E0E0E', vignette: DARK, short: { from: 'strike', dur: { pose: 24 } },
+      layers: [
+        { id: 'tile', img: 'tile', z: 2, pos: [0.5, 0.44], anchor: [0.5, 0.5], h: hh, visible: false },
+        { id: 'dots', img: 'dotsA', z: 2, pos: [0.5, 0.62], anchor: [0.5, 0.5], h: 16 / H, visible: false },
+      ],
+      beats: [
+        { id: 'darken', type: 'drop', dur: 2 },
+        { id: 'hold', type: 'hold', dur: 20, fx: [{ at: 0, fx: 'glow', origin: [0.5, 0.44], r0: 6, r1: 10, dur: 20, color: AMBER.body, z: 1 }] },
+        { id: 'strike', type: 'strike', dur: 3,
+          frames: [{ f: 0, layer: 'tile', visible: true, pos: [0.5, 0.26], smear: { sx: 0.9, sy: 1.3, lines: 4 } }, { f: 2, layer: 'tile', pos: [0.5, 0.44] }] },
+        { id: 'impact', type: 'impact', dur: 15,
+          frames: [{ f: 0, layer: 'dots', visible: true }],
+          tracks: [{ layer: 'tile', prop: 'sy', from: 0.84, to: 1, dur: 10, ease: 'pop' }, { layer: 'tile', prop: 'sx', from: 1.1, to: 1, dur: 10, ease: 'pop' }],
+          fx: [{ at: 0, fx: 'flash', alpha: 0.5, decay: 12 }, { at: 0, fx: 'shake', amp: 4, dur: 6 },
+               { at: 0, fx: 'particles', preset: 'spark', n: 14, origin: [0.5, 0.5], z: 3 }, { at: 0, sfx: 'dong' }] },
+        { id: 'pose', type: 'pose', dur: 45,
+          frames: [{ f: 6, layer: 'dots', img: 'dotsB' }],
+          fx: [{ at: 6, fx: 'text', str: opts && opts.all ? '七招全会' : '学会了 · ' + name, in: 'pop', pos: [0.5, 0.72], size: 24, color: PAPER, stroke: 'rgba(0,0,0,0)', dur: 39 },
+               { at: 6, sfx: 'bell9' }] },
+        { id: 'out', type: 'out', dur: 6, fx: [{ at: 0, fx: 'flash', color: th.bg, alpha: 1, hold: 2, decay: 4, paper: true }] },
+      ],
+    };
+    return app.playCut(tl, images, opts);
+  };
+
+  // ---------- 升档学新招（3.5 秒，短版 1.1 秒）----------
+  // 旧档方块站在光里 → 呼吸 → 上方聚能 → 新档方块砸下 → 咚 + 推镜 → 光环扫一圈外扩 → 光柱慢转「中等 · 新招：区块排除」
+  app.cutTier = (tier, lessonName, opts) => {
+    const th = app.th, H = app.H, W = app.W;
+    const top = tier === 5;
+    const pal = top ? GOLD : th.tileB ? { body: th.tileB[0], edge: th.tileB[1], ink: th.tileB[2] } : AMBER;
+    const sz = Math.round(Math.min(W * 0.42, 170));
+    const images = { old: tileImg(sz, GREY, { bars: tier }), neu: tileImg(sz, pal, { bars: tier + 1 }) };
+    const hh = (images.old.height / app.dpr) / H;
+    const tl = {
+      id: 'tier', fps: 60, bg: '#0A0A0A', vignette: DARK, short: { from: 'strike', drop: ['ring'], dur: { pose: 36 } },
+      layers: [
+        { id: 'old', img: 'old', z: 2, pos: [0.5, 0.5], anchor: [0.5, 0.5], h: hh, alpha: 0 },
+        { id: 'neu', img: 'neu', z: 3, pos: [0.5, 0.5], anchor: [0.5, 0.5], h: hh, visible: false },
+      ],
+      beats: [
+        { id: 'dark-in', type: 'darkIn', dur: 24, tracks: [{ layer: 'old', prop: 'alpha', from: 0, to: 1, dur: 24, ease: 'out' }] },
+        { id: 'hold', type: 'hold', dur: 36, tracks: [{ layer: 'old', prop: 'scale', from: 1, to: 1.02, ease: 'breathe' }],
+          fx: [{ at: 0, fx: 'glow', origin: [0.5, 0.6], r0: 14, r1: 18, dur: 36, color: AMBER.body, z: 1 }] },
+        { id: 'charge', type: 'charge', dur: 40,
+          fx: [{ at: 0, fx: 'glow', origin: [0.5, 0.22], r0: 8, r1: 60, grow: 40, dur: 40, color: AMBER.body, z: 4 },
+               { at: 0, fx: 'strobe', pattern: [2, 6, 1, 8], min: 0, max: 0.6, local: [0.5, 0.22, 0.25], dur: 40 }, { at: 0, sfx: 'hum' }] },
+        { id: 'strike', type: 'strike', dur: 3,
+          frames: [{ f: 0, layer: 'neu', visible: true, pos: [0.5, 0.24], smear: { sx: 0.9, sy: 1.3, lines: 6 } }, { f: 2, layer: 'neu', pos: [0.5, 0.5] }] },
+        { id: 'impact', type: 'impact', dur: 18,
+          fx: [{ at: 0, fx: 'flash', alpha: 0.7, decay: 15 }, { at: 0, fx: 'shake', amp: 6, dur: 8 },
+               { at: 0, fx: 'particles', preset: 'spark', n: 28, origin: [0.5, 0.5], z: 5 }, { at: 0, fx: 'star', origin: [0.5, 0.5], size: 0.12, z: 5 },
+               { at: 0, fx: 'camera', steps: [1.08, 1.18, 1.3], stepDur: 3, focus: [0.5, 0.5] }, { at: 0, sfx: 'dong' }] },
+        { id: 'swap', type: 'swap', dur: 2, frames: [{ f: 0, layer: 'old', visible: false }, { f: 0, layer: 'neu', scale: 1.15 }],
+          fx: [{ at: 0, fx: 'camera', to: 1, dur: 0, focus: [0.5, 0.5] }] },
+        { id: 'ring', type: 'ring', dur: 30, fx: [{ at: 0, fx: 'ring', origin: [0.5, 0.52], rx: 0.36, ry: 0.07, dur: 30, expand: true, z: 4 }, { at: 0, sfx: 'whoosh' }] },
+        { id: 'pose', type: 'pose', dur: 50,
+          fx: [{ at: 0, fx: 'rays', origin: [0.5, 0.5], z: 1, fadeIn: 10, alpha: 0.26, color: top ? GOLD.body : AMBER.body, dur: 50 },
+               { at: 8, fx: 'text', str: top ? '大师' : S.TIERS[tier].name, in: 'pop', pos: [0.5, 0.74], size: 34, color: PAPER, stroke: 'rgba(0,0,0,0)', dur: 42 },
+               { at: 14, fx: 'text', str: lessonName ? '新招：' + lessonName : '新的一档', in: 'fade', pos: [0.5, 0.8], size: 16, color: 'rgba(243,234,210,0.75)', stroke: 'rgba(0,0,0,0)', dur: 36 },
+               { at: 8, sfx: 'chord' }] },
+        { id: 'out', type: 'out', dur: 8, fx: [{ at: 0, fx: 'flash', color: th.bg, alpha: 1, hold: 3, decay: 5, paper: true }] },
+      ],
+    };
+    return app.playCut(tl, images, opts);
+  };
+
+  // ---------- 通关第二段（第一段在棋盘上：顿、金色波浪、长停）----------
+  // 整盘 3 帧压扁收成一块大金方块 → 咚 + 推镜 → 光阵底「完成！」→ 结束后直接硬切到安静的结算页（反差回落）
+  app.cutWin = (boardShot, geo, tier, head, sub, opts) => {
+    const th = app.th, H = app.H, W = app.W;
+    const sz = Math.round(Math.min(W * 0.46, 180));
+    const images = { board: boardShot, gold: tileImg(sz, GOLD, { check: true, bars: tier + 1 }), rays: raysImg(th) };
+    const bpos = [(geo.x + geo.size / 2) / W, (geo.y + geo.size / 2) / H];
+    const tl = {
+      id: 'win', fps: 60, bg: '#0E0E0E', short: { from: 'strike', dur: { pose: C.CUT.win.poseShort } },
+      layers: [
+        { id: 'rays', img: 'rays', fit: 'cover', z: 0, visible: false },
+        { id: 'board', img: 'board', z: 2, pos: bpos, anchor: [0.5, 0.5], h: geo.size / H },
+        { id: 'gold', img: 'gold', z: 3, pos: [0.5, 0.45], anchor: [0.5, 0.5], h: (images.gold.height / app.dpr) / H, visible: false },
+      ],
+      beats: [
+        { id: 'strike', type: 'strike', dur: 3,
+          frames: [{ f: 0, layer: 'board', smear: { sx: 1.1, sy: 0.6, lines: 8 } }, { f: 2, layer: 'board', visible: false }, { f: 2, layer: 'gold', visible: true }] },
+        { id: 'impact', type: 'impact', dur: 18,
+          fx: [{ at: 0, fx: 'flash', alpha: 0.7, decay: 15 }, { at: 0, fx: 'shake', amp: 6, dur: 8 },
+               { at: 0, fx: 'particles', preset: 'spark', n: 28, origin: [0.5, 0.45], z: 5 }, { at: 0, fx: 'star', origin: [0.5, 0.45], size: 0.12, z: 5 },
+               { at: 0, fx: 'camera', steps: [1.08, 1.18, 1.3], stepDur: 3, focus: [0.5, 0.45] }, { at: 0, sfx: 'dong' }] },
+        { id: 'pose', type: 'pose', dur: 60,
+          frames: [{ f: 0, layer: 'rays', visible: true }],
+          tracks: [{ layer: 'rays', prop: 'scale', from: 1, to: 1.08, dur: 60, ease: 'linear' }],
+          fx: [{ at: 0, fx: 'camera', to: 1, dur: 10, ease: 'out', focus: [0.5, 0.45] },
+               { at: 8, fx: 'text', str: head, in: 'pop', pos: [0.5, 0.71], size: 40, color: PAPER, stroke: 'rgba(0,0,0,0.35)', strokeWidth: 6, dur: 52 },
+               { at: 12, fx: 'text', str: sub, in: 'fade', pos: [0.5, 0.78], size: 16, color: PAPER, stroke: 'rgba(0,0,0,0.35)', strokeWidth: 4, dur: 48 },
+               { at: 0, fx: 'particles', preset: 'dust', n: 20, z: 4, dur: 60 }, { at: 8, sfx: 'chord' }] },
+      ],
+    };
+    return app.playCut(tl, images, opts);
+  };
+
+  app.cutTileImg = tileImg;
+};
+
+});
+__def("js/cutscene.js", function (module, exports, require) {
+// 通用过场播放器 1.0（2026-11-21，拆《潜水员戴夫》过场后写）
+// 只用 canvas 2D，不碰 DOM：微信小游戏 require 进来就能用，浏览器 <script> 也能用。
+// 时间单位是「帧」（60fps 基准）；真机掉帧时按毫秒补帧，不拖慢。坐标全部 0～1 归一化，横竖屏通用。
+// 用法：
+//   const { createCutscene } = require('./cutscene.js');
+//   const cs = createCutscene({ ctx, width: 375, height: 667, images, timeline, short: false,
+//                               onEnd() {}, onSfx(name) {} });
+//   每帧：cs.update(dtMs); cs.draw();   点屏幕：cs.skip();
+// 时间线格式见 00_过场动画制作_技能_1.0.md 第 5 节。
+(function (root) {
+  'use strict';
+
+  // ---------- 缓动 ----------
+  const EASE = {
+    linear: t => t,
+    in: t => t * t,
+    out: t => 1 - (1 - t) * (1 - t),
+    inOut: t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2),
+    sine: t => 0.5 - 0.5 * Math.cos(Math.PI * t),
+    step: t => (t < 1 ? 0 : 1),
+    pop: t => { const c = 2.2; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); }, // 弹过头再回来
+  };
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  // 一些随机数要可重复（同一段过场每次播一样），用固定种子
+  function rng(seed) {
+    let s = seed >>> 0 || 1;
+    return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  }
+
+  // ---------- 粒子预设 ----------
+  const PARTICLE = {
+    spark:  { colors: ['#FFE07A', '#FFB030', '#FF7A1A'], speed: [3, 9], gravity: 0.25, life: [18, 36], size: [2, 3.5], shape: 'line' },
+    debris: { colors: ['#9A9A9A', '#6E6E6E', '#C8C0B0'], speed: [3, 8], gravity: 0.35, life: [40, 70], size: [3, 6], shape: 'rect' },
+    hearts: { colors: ['#FF5A7A', '#FFFFFF', '#E8204A'], speed: [0.4, 1.2], gravity: -0.02, life: [90, 150], size: [8, 16], shape: 'heart', area: true },
+    bokeh:  { colors: ['#FFFFFF', '#FFE0F0', '#FFF4C0'], speed: [0.2, 0.6], gravity: -0.01, life: [80, 140], size: [6, 18], shape: 'dot', area: true, alpha: 0.5 },
+    dust:   { colors: ['#FFFFFF'], speed: [0.2, 0.8], gravity: 0, life: [60, 120], size: [1.5, 3], shape: 'dot', area: true, alpha: 0.6 },
+  };
+
+  function createCutscene(opts) {
+    const ctx = opts.ctx;
+    const W = opts.width, H = opts.height;
+    const tl = opts.timeline;
+    const fps = tl.fps || 60;
+    const images = opts.images || {};
+    const onEnd = opts.onEnd || (() => {});
+    const onSfx = opts.onSfx || (() => {});
+    const rand = rng(tl.seed || 7);
+
+    // 短版（第二次起播）：从 short.from 开始，去掉 short.drop 里的节拍，short.dur 里的节拍改时长
+    const S = opts.short ? (tl.short || (tl.shortFrom ? { from: tl.shortFrom } : null)) : null;
+    let defs = tl.beats, pre = [];
+    if (S) {
+      const i0 = Math.max(0, tl.beats.findIndex(b => b.id === S.from));
+      pre = tl.beats.slice(0, i0);
+      defs = tl.beats.slice(i0).filter(b => !(S.drop || []).includes(b.id))
+        .map(b => (S.dur && S.dur[b.id] ? Object.assign({}, b, { dur: S.dur[b.id], repeat: 1 }) : b));
+    }
+
+    // 把 repeat 展开成平铺的节拍表，记下每个节拍的起始帧
+    const beats = [];
+    let total = 0;
+    for (const b of defs) {
+      const n = b.repeat || 1;
+      for (let k = 0; k < n; k++) {
+        beats.push({ def: b, start: total, k });
+        total += b.dur;
+      }
+    }
+
+    // 图层状态
+    const layers = {};
+    const base = {};
+    for (const L of tl.layers) {
+      const s = {
+        id: L.id, img: L.img, z: L.z || 0, anchor: L.anchor || [0.5, 0.5], fit: L.fit || null,
+        x: (L.pos || [0.5, 0.5])[0], y: (L.pos || [0.5, 0.5])[1], h: L.h || 0.5,
+        scale: 1, sx: 1, sy: 1, alpha: L.alpha == null ? 1 : L.alpha, rot: 0,
+        visible: L.visible !== false, flipX: false, smear: null,
+      };
+      layers[L.id] = s;
+      base[L.id] = Object.assign({}, s);
+    }
+
+    let frame = 0;          // 当前帧
+    let acc = 0;            // 毫秒累计
+    let done = false;
+    let beatIdx = -1;
+    const active = [];      // 正在播的特效
+    const tracks = [];      // 正在走的补间
+    let cycle = null;       // 连打
+    const cam = { scale: 1, fx: 0.5, fy: 0.5, anim: null };
+
+    // ---------- 节拍进入：起补间、换图、开特效 ----------
+    function enterBeat(i, silent) {
+      const { def, start } = typeof i === 'number' ? beats[i] : i;
+      if (def.reset) resetToBase(def.reset);
+      for (const t of def.tracks || []) {
+        const L = layers[t.layer];
+        if (!L) continue;
+        const from = t.from == null ? L[t.prop] : t.from;
+        tracks.push({ L, prop: t.prop, from, to: t.to, start: start + (t.at || 0), dur: t.dur || def.dur,
+                      ease: t.ease || 'linear', yoyo: t.ease === 'breathe' });
+      }
+      cycle = def.cycle ? Object.assign({ start, last: -1, order: [] }, def.cycle) : null;
+      if (silent) {
+        // 短版快进：只落最终状态，不放特效
+        for (const f of def.frames || []) applyFrame(f);
+        for (const t of tracks) if (t.prop !== 'scale' || !t.yoyo) t.L[t.prop] = t.yoyo ? t.from : t.to;
+        tracks.length = 0;
+        if (def.camera) cam.scale = def.camera.to || 1;
+        return;
+      }
+    }
+
+    function resetToBase(mode) {
+      // 反差回落：所有特效同帧清零，回到第一张图
+      active.length = 0;
+      tracks.length = 0;
+      cycle = null;
+      cam.scale = 1; cam.anim = null; cam.fx = 0.5; cam.fy = 0.5;
+      if (mode === 'all' || mode === true) {
+        for (const id in layers) Object.assign(layers[id], base[id]);
+      }
+    }
+
+    function applyFrame(f) {
+      const L = layers[f.layer];
+      if (!L) return;
+      if (f.img) L.img = f.img;
+      if (f.visible != null) L.visible = f.visible;
+      if (f.flipX != null) L.flipX = f.flipX;
+      if (f.pos) { L.x = f.pos[0]; L.y = f.pos[1]; }
+      if (f.alpha != null) L.alpha = f.alpha;
+      if (f.scale != null) L.scale = f.scale;
+      L.smear = f.smear || null;
+    }
+
+    function startFx(spec, beatStart) {
+      const fx = Object.assign({}, spec, { t0: beatStart + (spec.at || 0) });
+      switch (fx.fx) {
+        case 'particles': {
+          const P = PARTICLE[fx.preset] || PARTICLE.spark;
+          fx.parts = [];
+          const n = fx.n || 20;
+          const ox = (fx.origin || [0.5, 0.5])[0] * W, oy = (fx.origin || [0.5, 0.5])[1] * H;
+          for (let k = 0; k < n; k++) {
+            const a = fx.angle != null ? fx.angle + (rand() - 0.5) * (fx.spread || Math.PI * 2)
+                                       : rand() * Math.PI * 2;
+            const sp = lerp(P.speed[0], P.speed[1], rand());
+            fx.parts.push({
+              x: P.area ? rand() * W : ox, y: P.area ? rand() * H : oy,
+              vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - (P.area ? 0 : 1.5),
+              life: Math.round(lerp(P.life[0], P.life[1], rand())), size: lerp(P.size[0], P.size[1], rand()),
+              color: P.colors[(rand() * P.colors.length) | 0], rot: rand() * 6.28, vr: (rand() - 0.5) * 0.4,
+            });
+          }
+          fx.P = P;
+          fx.dur = fx.dur || Math.max(...fx.parts.map(p => p.life));
+          break;
+        }
+        case 'camera':
+          cam.anim = { t0: fx.t0, steps: fx.steps, stepDur: fx.stepDur || 3, from: cam.scale, to: fx.to,
+                       dur: fx.dur || 0, ease: fx.ease || (fx.steps ? 'step' : 'out') };
+          if (fx.focus) { cam.fx = fx.focus[0]; cam.fy = fx.focus[1]; }
+          return; // 不进 active
+        case 'sfx':
+          onSfx(fx.name);
+          return;
+      }
+      if (fx.fx === 'speedlines' || fx.fx === 'rays') fx.seed = (rand() * 1e9) | 0;
+      active.push(fx);
+    }
+
+    // ---------- 每帧推进 ----------
+    function stepFrame() {
+      // 进入新节拍
+      while (beatIdx + 1 < beats.length && frame >= beats[beatIdx + 1].start) {
+        beatIdx++;
+        enterBeat(beatIdx, false);
+      }
+      const b = beats[beatIdx];
+      if (b) {
+        const local = frame - b.start;
+        for (const f of b.def.frames || []) if (f.f === local) applyFrame(f);
+        for (const s of b.def.fx || []) {
+          if ((s.at || 0) === local) {
+            if (s.sfx) onSfx(s.sfx);
+            if (s.fx) startFx(s, b.start);
+          }
+        }
+        if (cycle) stepCycle(local);
+      }
+      // 补间
+      for (let i = tracks.length - 1; i >= 0; i--) {
+        const t = tracks[i];
+        const p = (frame - t.start) / t.dur;
+        if (p < 0) continue;
+        if (t.yoyo) { t.L[t.prop] = lerp(t.from, t.to, 0.5 - 0.5 * Math.cos(Math.PI * 2 * p)); if (p >= 1) t.L[t.prop] = t.from; }
+        else t.L[t.prop] = lerp(t.from, t.to, (EASE[t.ease] || EASE.linear)(clamp(p, 0, 1)));
+        if (p >= 1) tracks.splice(i, 1);
+      }
+      // 镜头
+      if (cam.anim) {
+        const a = cam.anim, lt = frame - a.t0;
+        if (a.steps) {
+          const k = Math.min(Math.floor(lt / a.stepDur), a.steps.length - 1);
+          if (lt >= 0) cam.scale = a.steps[k];
+          if (lt >= a.steps.length * a.stepDur) cam.anim = null;
+        } else if (a.dur) {
+          cam.scale = lerp(a.from, a.to, (EASE[a.ease] || EASE.out)(clamp(lt / a.dur, 0, 1)));
+          if (lt >= a.dur) cam.anim = null;
+        } else { cam.scale = a.to; cam.anim = null; }
+      }
+      // 粒子物理、过期特效
+      for (let i = active.length - 1; i >= 0; i--) {
+        const fx = active[i];
+        const lt = frame - fx.t0;
+        if (fx.parts) for (const p of fx.parts) { p.x += p.vx; p.y += p.vy; p.vy += fx.P.gravity; p.rot += p.vr; p.vx *= 0.985; }
+        const life = fxLife(fx);
+        if (life != null && lt > life) active.splice(i, 1);
+      }
+      frame++;
+      if (frame >= total && !done) finish();
+    }
+
+    function fxLife(fx) {
+      switch (fx.fx) {
+        case 'flash': return (fx.hold || 0) + (fx.decay || 15);
+        case 'shake': return fx.dur || 8;
+        case 'star': return fx.dur || 14;
+        case 'sweat': return fx.dur || 50;
+        default: return fx.dur == null ? null : fx.dur;   // null = 一直到节拍被 reset 或过场结束
+      }
+    }
+
+    function stepCycle(local) {
+      const c = cycle;
+      const slot = Math.floor(local / (c.every || 3));
+      if (slot === c.last) return;
+      c.last = slot;
+      const L = layers[c.layer];
+      if (!L) return;
+      // 乱序但不连着两次同一张；镜像和小位移冒充更多张
+      let k;
+      do { k = (rand() * c.imgs.length) | 0; } while (c.imgs.length > 1 && c.imgs[k] === L.img);
+      L.img = c.imgs[k];
+      L.flipX = c.mirror ? rand() < 0.4 : false;
+      const j = c.jitter || 0;
+      L.x = (c.pos || base[c.layer].pos || [base[c.layer].x, base[c.layer].y])[0] + (rand() - 0.5) * j * 2;
+      L.y = (c.pos || [base[c.layer].x, base[c.layer].y])[1] + (rand() - 0.5) * j;
+    }
+
+    function finish() {
+      done = true;
+      onEnd();
+    }
+
+    // ---------- 绘制 ----------
+    function drawLayer(L) {
+      if (!L.visible || L.alpha <= 0) return;
+      const img = images[L.img];
+      if (!img) return;
+      ctx.save();
+      ctx.globalAlpha = clamp(L.alpha, 0, 1);
+      let dw, dh;
+      if (L.fit === 'cover') {
+        const s = Math.max(W / img.width, H / img.height) * L.scale;
+        dw = img.width * s; dh = img.height * s;
+      } else {
+        dh = L.h * H * L.scale; dw = dh * img.width / img.height;
+      }
+      const px = L.x * W, py = L.y * H;
+      ctx.translate(px, py);
+      if (L.rot) ctx.rotate(L.rot);
+      let sx = L.sx * (L.flipX ? -1 : 1), sy = L.sy;
+      if (L.smear) {
+        // 抹帧：拉伸 + 速度线，不用另外出图
+        sx *= L.smear.sx || 2.4; sy *= L.smear.sy || 0.8;
+        drawSmearLines(L, dw, dh);
+      }
+      ctx.scale(sx, sy);
+      ctx.drawImage(img, -dw * L.anchor[0], -dh * L.anchor[1], dw, dh);
+      ctx.restore();
+    }
+
+    function drawSmearLines(L, dw, dh) {
+      const n = L.smear.lines || 8;
+      const dir = L.smear.dir || 1;          // 1 = 从左往右冲，速度线留在左边
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = L.smear.color || '#FFFFFF';
+      ctx.lineWidth = 2;
+      const r = rng(frame * 31 + 5);
+      for (let k = 0; k < n; k++) {
+        const y = (r() - 0.5) * dh * 0.9 - dh * (L.anchor[1] - 0.5);
+        const len = dw * (0.8 + r() * 1.4);
+        ctx.beginPath();
+        ctx.moveTo(-dir * dw * 0.4, y);
+        ctx.lineTo(-dir * (dw * 0.4 + len), y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 世界里的特效（跟镜头一起缩放），按 z 插进图层之间
+    function drawWorldFx(fx) {
+      const lt = frame - fx.t0;
+      const o = fx.origin || [0.5, 0.5];
+      const ox = o[0] * W, oy = o[1] * H;
+      ctx.save();
+      switch (fx.fx) {
+        case 'glow': {     // 聚能：光点由小变大
+          const p = clamp(lt / (fx.grow || fx.dur || 40), 0, 1);
+          const r = lerp(fx.r0 || 4, fx.r1 || 60, EASE.in(p)) * (1 + 0.08 * Math.sin(lt * 0.9));
+          const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, r);
+          g.addColorStop(0, '#FFFFFF'); g.addColorStop(0.3, fx.color || '#9FF4FF'); g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ox, oy, r, 0, 6.29); ctx.fill();
+          break;
+        }
+        case 'rays': {     // 放射光柱，慢转
+          const n = fx.n || 12, len = Math.max(W, H) * 1.2;
+          const a0 = lt * (fx.spin == null ? 0.004 : fx.spin);
+          const fade = fx.fadeIn ? clamp(lt / fx.fadeIn, 0, 1) : 1;
+          ctx.globalAlpha = (fx.alpha || 0.35) * fade;
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.fillStyle = fx.color || '#FFD27A';
+          for (let k = 0; k < n; k++) {
+            const a = a0 + k * Math.PI * 2 / n, w = (fx.width || 0.09);
+            ctx.beginPath(); ctx.moveTo(ox, oy);
+            ctx.lineTo(ox + Math.cos(a - w) * len, oy + Math.sin(a - w) * len);
+            ctx.lineTo(ox + Math.cos(a + w) * len, oy + Math.sin(a + w) * len);
+            ctx.closePath(); ctx.fill();
+          }
+          break;
+        }
+        case 'speedlines': {   // 集中线：从四周指向中心，每 2 帧换一次
+          const r = rng(fx.seed + Math.floor(lt / 2));
+          const n = fx.n || 40, R = Math.hypot(W, H) * 0.6;
+          ctx.strokeStyle = fx.color || '#FFFFFF';
+          ctx.globalAlpha = fx.alpha || 0.8;
+          for (let k = 0; k < n; k++) {
+            const a = r() * Math.PI * 2, inner = R * (fx.inner || 0.45) * (0.8 + r() * 0.4);
+            ctx.lineWidth = 1 + r() * 2.5;
+            ctx.beginPath();
+            ctx.moveTo(ox + Math.cos(a) * inner, oy + Math.sin(a) * inner);
+            ctx.lineTo(ox + Math.cos(a) * R * 1.4, oy + Math.sin(a) * R * 1.4);
+            ctx.stroke();
+          }
+          break;
+        }
+        case 'ring': {     // 光环：绕物体扫一圈；expand = 最后一圈扩出画面
+          const dur = fx.dur || 30, p = clamp(lt / dur, 0, 1);
+          let rx = (fx.rx || 0.42) * W, ry = (fx.ry || 0.09) * H;
+          if (fx.expand) { const e = 1 + EASE.in(p) * 3.5; rx *= e; ry *= e; }
+          const head = -Math.PI / 2 + p * Math.PI * 2 * (fx.expand ? 0.6 : 1);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.lineCap = 'round';
+          for (let k = 0; k < 14; k++) {     // 一条带尾巴的弧
+            const a1 = head - k * 0.12, a2 = head - (k + 1) * 0.12;
+            ctx.globalAlpha = (1 - k / 14) * (fx.expand ? 1 - p * 0.6 : 1);
+            ctx.strokeStyle = k < 2 ? '#FFFFFF' : (fx.color || '#5FD0FF');
+            ctx.lineWidth = (fx.width || 6) * (1 - k / 20);
+            ctx.beginPath(); ctx.ellipse(ox, oy, rx, ry, 0, a2, a1); ctx.stroke();
+          }
+          if (fx.expand) { ctx.globalAlpha = 0.5 * (1 - p); ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.ellipse(ox, oy, rx, ry, 0, 0, 6.29); ctx.stroke(); }
+          break;
+        }
+        case 'star': {     // 命中星形：黄色尖角，0.6 → 1.1 后消失
+          const dur = fx.dur || 14, p = clamp(lt / dur, 0, 1);
+          const R = (fx.size || 0.08) * W * lerp(0.6, 1.1, EASE.out(p));
+          ctx.globalAlpha = p > 0.7 ? (1 - p) / 0.3 : 1;
+          ctx.fillStyle = fx.color || '#FFE24A'; ctx.strokeStyle = '#3A2A00'; ctx.lineWidth = 2;
+          ctx.beginPath();
+          const n = fx.points || 9;
+          for (let k = 0; k < n * 2; k++) {
+            const a = k * Math.PI / n + lt * 0.02, rr = k % 2 ? R * 0.42 : R * (0.85 + 0.3 * ((k * 37) % 5) / 5);
+            ctx.lineTo(ox + Math.cos(a) * rr, oy + Math.sin(a) * rr);
+          }
+          ctx.closePath(); ctx.fill(); ctx.stroke();
+          break;
+        }
+        case 'sweat': {    // 汗滴：冒出来、往下滑一点、淡掉
+          const dur = fx.dur || 50, p = clamp(lt / dur, 0, 1);
+          const s = (fx.size || 0.025) * W;
+          ctx.globalAlpha = p < 0.15 ? p / 0.15 : p > 0.75 ? (1 - p) / 0.25 : 1;
+          const y = oy + p * s * 1.5;
+          ctx.fillStyle = '#BFE8FF'; ctx.strokeStyle = '#2A4A66'; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.moveTo(ox, y - s * 1.3);
+          ctx.quadraticCurveTo(ox + s, y, ox, y + s * 0.6); ctx.quadraticCurveTo(ox - s, y, ox, y - s * 1.3);
+          ctx.fill(); ctx.stroke();
+          break;
+        }
+        case 'particles': {
+          const P = fx.P;
+          for (const p of fx.parts) {
+            if (lt > p.life) continue;
+            ctx.globalAlpha = (P.alpha || 1) * (1 - lt / p.life);
+            ctx.fillStyle = ctx.strokeStyle = p.color;
+            if (P.shape === 'line') { ctx.lineWidth = p.size * 0.6; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * 2, p.y - p.vy * 2); ctx.stroke(); }
+            else if (P.shape === 'rect') { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6); ctx.restore(); }
+            else if (P.shape === 'heart') drawHeart(p.x, p.y, p.size);
+            else { ctx.beginPath(); ctx.arc(p.x, p.y, p.size / 2, 0, 6.29); ctx.fill(); }
+          }
+          break;
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawHeart(x, y, s) {
+      ctx.beginPath();
+      ctx.moveTo(x, y + s * 0.35);
+      ctx.bezierCurveTo(x - s * 0.6, y - s * 0.1, x - s * 0.3, y - s * 0.6, x, y - s * 0.25);
+      ctx.bezierCurveTo(x + s * 0.3, y - s * 0.6, x + s * 0.6, y - s * 0.1, x, y + s * 0.35);
+      ctx.fill();
+    }
+
+    // 屏幕特效（不跟镜头缩放）：渐晕、闪、频闪、文字
+    function drawScreenFx(fx) {
+      const lt = frame - fx.t0;
+      ctx.save();
+      switch (fx.fx) {
+        case 'flash': {
+          const hold = fx.hold || 0, decay = fx.decay || 15;
+          const a = lt < hold ? 1 : 1 - (lt - hold) / decay;
+          ctx.globalAlpha = clamp((fx.alpha == null ? 0.6 : fx.alpha) * a, 0, 1);
+          ctx.fillStyle = fx.color || '#FFFFFF';
+          ctx.fillRect(0, 0, W, H);
+          break;
+        }
+        case 'strobe': {   // pattern = 每次亮/暗各停几帧；local = 只闪局部光点（防光敏）
+          const pat = fx.pattern || [2, 6];
+          const cyc = pat.reduce((s, v) => s + v, 0);
+          let m = lt % cyc, k = 0;
+          while (m >= pat[k]) { m -= pat[k]; k++; }
+          const a = k % 2 === 0 ? (fx.max || 0.5) : (fx.min || 0.05);
+          ctx.globalAlpha = a;
+          if (fx.local) {
+            const [lx, ly, lr] = fx.local;
+            const g = ctx.createRadialGradient(lx * W, ly * H, 0, lx * W, ly * H, lr * W);
+            g.addColorStop(0, fx.color || '#E8FFFF'); g.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+          } else { ctx.fillStyle = fx.color || '#FFFFFF'; ctx.fillRect(0, 0, W, H); }
+          break;
+        }
+        case 'fade': {     // 淡黑 / 淡白：from → to 透明度
+          const p = clamp(lt / (fx.dur || 20), 0, 1);
+          ctx.globalAlpha = lerp(fx.from == null ? 0 : fx.from, fx.to == null ? 1 : fx.to, p);
+          ctx.fillStyle = fx.color || '#000000';
+          ctx.fillRect(0, 0, W, H);
+          break;
+        }
+        case 'text': {
+          const inDur = fx.inDur || 10, p = clamp(lt / inDur, 0, 1);
+          const s = fx.in === 'pop' ? EASE.pop(p) : 1;
+          const pos = fx.pos || [0.5, 0.8];
+          ctx.globalAlpha = fx.in === 'fade' ? p : clamp(p * 3, 0, 1);
+          ctx.translate(pos[0] * W, pos[1] * H); ctx.scale(s, s);
+          ctx.font = `bold ${fx.size || 28}px "PingFang SC","Hiragino Sans GB",sans-serif`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.lineWidth = fx.strokeWidth || 6; ctx.strokeStyle = fx.stroke || '#1A1A1A'; ctx.lineJoin = 'round';
+          ctx.strokeText(fx.str, 0, 0);
+          ctx.fillStyle = fx.color || '#FFFFFF'; ctx.fillText(fx.str, 0, 0);
+          break;
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawVignette() {
+      const v = tl.vignette;
+      if (!v) return;
+      const g = ctx.createRadialGradient(W * 0.5, H * (v.cy || 0.45), Math.min(W, H) * (v.inner || 0.25),
+                                         W * 0.5, H * (v.cy || 0.45), Math.hypot(W, H) * (v.outer || 0.6));
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${v.strength == null ? 0.75 : v.strength})`);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
+
+    const SCREEN_FX = { flash: 1, strobe: 1, fade: 1, text: 1 };
+
+    function draw() {
+      const f = frame - 1;   // 画的是刚推进完的那一帧
+      ctx.save();
+      ctx.fillStyle = tl.bg || '#111111';
+      ctx.fillRect(0, 0, W, H);
+      // 镜头 + 震屏
+      let shx = 0, shy = 0;
+      for (const fx of active) if (fx.fx === 'shake') {
+        const lt = f - fx.t0, k = 1 - lt / (fx.dur || 8), r = rng(f * 13 + 1);
+        shx += (r() - 0.5) * 2 * (fx.amp || 6) * k; shy += (r() - 0.5) * 2 * (fx.amp || 6) * k;
+      }
+      const cx = cam.fx * W, cy = cam.fy * H;
+      ctx.translate(cx + shx, cy + shy); ctx.scale(cam.scale, cam.scale); ctx.translate(-cx, -cy);
+      // 图层和世界特效按 z 排序
+      const items = [];
+      for (const id in layers) items.push({ z: layers[id].z, L: layers[id] });
+      for (const fx of active) if (!SCREEN_FX[fx.fx] && fx.fx !== 'shake') items.push({ z: fx.z == null ? 50 : fx.z, fx });
+      items.sort((a, b) => a.z - b.z);
+      for (const it of items) it.L ? drawLayer(it.L) : drawWorldFx(it.fx);
+      ctx.restore();
+      drawVignette();
+      for (const fx of active) if (SCREEN_FX[fx.fx]) drawScreenFx(fx);
+      ctx.restore();
+    }
+
+    // ---------- 对外 ----------
+    function update(dtMs) {
+      if (done) return;
+      acc += Math.min(dtMs, 250);
+      const step = 1000 / fps;
+      while (acc >= step && !done) { stepFrame(); acc -= step; }
+    }
+
+    function jumpTo(i) {
+      // 静默快进到第 i 个节拍（短版用）
+      while (beatIdx + 1 < i) { beatIdx++; enterBeat(beatIdx, true); }
+      frame = beats[i] ? beats[i].start : total;
+    }
+
+    function skip() {
+      if (done) return;
+      // 落到最终状态：快进全部节拍，清掉特效，立即结束
+      jumpTo(beats.length);
+      active.length = 0; cam.scale = 1; cam.anim = null;
+      frame = total;
+      finish();
+    }
+
+    for (const def of pre) enterBeat({ def, start: 0 }, true);   // 短版：前面跳过的节拍只落状态
+    stepFrame();
+
+    return {
+      update, draw, skip,
+      get frame() { return frame; },
+      get totalFrames() { return total; },
+      get done() { return done; },
+      get beatName() { const b = beats[beatIdx]; return b ? (b.def.id || b.def.type) : ''; },
+    };
+  }
+
+  const api = { createCutscene, PARTICLE, EASE };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.Cutscene = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
 
 });
 __def("js/drawboard.js", function (module, exports, require) {
@@ -357,10 +1195,11 @@ function linesLayer(geo, th, dpr, hand) {
 
 // 数字方块：影子（两层半透明，不用模糊，省电）→ 厚边 → 面 → 顶上一条高光 → 数字。
 // 刚放下的那 0.32 秒：从上面大一点落下（影子由远变近），落地压扁一下再弹回。
-function tile(ctx, th, m, cx, cy, cs, v, wrong, p0, t, same) {
+function tile(ctx, th, m, cx, cy, cs, v, wrong, p0, t, same, gold, extra) {
   const style = m.tileStyle === 'B' ? 'B' : 'A';
   const pal = th[style === 'B' ? 'tileB' : 'tileA'] || ['#FFFFFF', '#CCCCCC', th.user];
   let body = pal[0], edge = pal[1], ink = pal[2];
+  if (gold) { body = '#E9C25A'; edge = '#A9832A'; ink = '#3A2A08'; } // 金面：某个数填完、通关波浪
   if (wrong) {
     if (style === 'B') { body = th.wrong; edge = Paper.rgba('#000000', 0.35); ink = '#FFFFFF'; }
     else { body = th.boardDark ? '#5A3434' : '#FCE6E3'; edge = th.boardDark ? '#2A1616' : '#E2B2AC'; ink = th.wrong; }
@@ -372,6 +1211,7 @@ function tile(ctx, th, m, cx, cy, cs, v, wrong, p0, t, same) {
     if (e >= 0 && e < 150) { const q = e / 150; lift = 12 * (1 - q * q); sx = sy = 1.22 - 0.22 * q * q; }
     else if (e >= 150 && e < 330) { const q = (e - 150) / 180; const b = Math.sin(q * Math.PI) * (1 - q); sx = 1 + 0.09 * b; sy = 1 - 0.11 * b; }
   }
+  if (extra && extra !== 1) { sx *= extra; sy *= extra; }
   const w = cs - inset * 2, h = cs - inset * 2 - thick;
   const x0 = cx + cs / 2, yb = cy + inset + h + thick; // 方块底边中点：压扁、放大都以它为准
   // 影子：离地越高越淡、越偏
@@ -480,15 +1320,21 @@ function draw(ctx, th, geo, m, dpr) {
       const p = (t - h0) / 340;
       if (p >= 0 && p < 1) oy = -6 * Math.sin(p * Math.PI) * (1 - p * 0.4);
     }
+    // 金面（某个数填完、通关波浪）和单格缩放（「出手」放大、呼吸）
+    const g0 = m.gold && m.gold[k];
+    const gold = !!g0 && t >= g0[0] && t < g0[1];
+    const csc = m.cellScale ? m.cellScale(k, t) : 1;
     if (v && m.given[k]) {
-      // 题目原有的数字：印在纸上，平的
+      // 题目原有的数字：印在纸上，平的（金面时整格铺金）
       ctx.save();
       ctx.translate(r.x + cs / 2 + ox, r.y + cs / 2 + 1 + oy);
-      ui.text(ctx, String(v), 0, 0, fs, th.given, 'center', 500);
+      if (csc !== 1) ctx.scale(csc, csc);
+      if (gold) ui.fillRR(ctx, -cs / 2 + 2, -cs / 2 + 1, cs - 4, cs - 4, 6, '#E9C25A');
+      ui.text(ctx, String(v), 0, 0, fs, gold ? '#3A2A08' : th.given, 'center', 500);
       ctx.restore();
     } else if (v) {
       // 自己填的数字：一块有厚度的方块
-      tile(ctx, th, m, r.x + ox, r.y + oy, cs, v, m.wrong && m.wrong(k), m.pops && m.pops[k], t, digit === v && m.sameHighlight !== false && k !== sel);
+      tile(ctx, th, m, r.x + ox, r.y + oy, cs, v, m.wrong && m.wrong(k), m.pops && m.pops[k], t, digit === v && m.sameHighlight !== false && k !== sel && !gold, gold, csc);
     } else if (m.notes && m.notes[k]) {
       for (let d = 1; d <= 9; d++) {
         if (!(m.notes[k] & S.bit(d))) continue;
@@ -562,6 +1408,140 @@ function sampleTile(ctx, th, style, x, y, cs, v, p0, t) {
 }
 
 module.exports = { draw, cellRect, cellAt, sampleTile };
+
+});
+__def("js/homeart.js", function (module, exports, require) {
+// 主页图：母题「八暗一亮」——黑暗里一块平放的 3×3 方块板，八块暗着，一块亮琥珀色（主页与过场设计_Fable_1.0.md）。
+// Midjourney 的图到之前，用代码画一张「吸魂者」式的占位：粗抖墨线、线很少、大块纯黑、一束硬边光锥，三种颜色。
+// 图到以后在 config.HOME_ART 填 src 和「亮的那一块」的位置，这里自动换成那张图。
+const P = require('./platform.js');
+const ui = require('./ui.js');
+const C = require('./config.js');
+
+const INK = '#050706', DARK = '#0B0F0E', TEAL = '#265053', TEAL2 = '#358179', AMBER = '#E0B040', AMBER2 = '#B0902E', PAPER = '#EEE6D0';
+
+let cache = null; // { key, canvas, lit: { x, y, s } }  lit = 亮的那一块在屏幕上的中心和边长（逻辑像素）
+let mjImg = null, mjTried = false;
+
+// 抖一点的粗墨线
+function inkLine(g, pts, w, seed) {
+  let s = seed;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  g.strokeStyle = INK;
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[i + 1];
+    const n = Math.max(2, Math.round(Math.hypot(x2 - x1, y2 - y1) / 10));
+    let px = x1, py = y1;
+    for (let k = 1; k <= n; k++) {
+      const t = k / n;
+      const x = x1 + (x2 - x1) * t + (rnd() - 0.5) * 1.6, y = y1 + (y2 - y1) * t + (rnd() - 0.5) * 1.6;
+      g.lineWidth = w * (0.75 + rnd() * 0.55);
+      g.beginPath(); g.moveTo(px, py); g.lineTo(x, y); g.stroke();
+      px = x; py = y;
+    }
+  }
+}
+
+// 代码画的占位图（W×H 逻辑像素）
+function drawPlaceholder(W, H, dpr) {
+  const c = P.makeCanvas(Math.round(W * dpr), Math.round(H * dpr));
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = DARK; g.fillRect(0, 0, W, H);
+  // 方块板：平放在桌上，从斜上方看（上窄下宽的透视）
+  const cx = W / 2, cy = H * 0.46, bw = Math.min(W * 0.5, 220), depth = bw * 0.62;
+  const topW = bw * 0.82, y0 = cy - depth / 2, y1 = cy + depth / 2;
+  const P2 = (u, v) => { const w = topW + (bw - topW) * v; return [cx - w / 2 + w * u, y0 + depth * v]; }; // u,v ∈ [0,1]
+  // 光锥：从画面外上方打下来，硬边，两层
+  g.fillStyle = 'rgba(38,80,83,0.55)';
+  g.beginPath(); g.moveTo(cx - W * 0.05, -10); g.lineTo(cx + W * 0.05, -10); g.lineTo(cx + bw * 0.78, y1 + depth * 0.25); g.lineTo(cx - bw * 0.78, y1 + depth * 0.25); g.closePath(); g.fill();
+  g.fillStyle = 'rgba(53,129,121,0.28)';
+  g.beginPath(); g.moveTo(cx - W * 0.025, -10); g.lineTo(cx + W * 0.025, -10); g.lineTo(cx + bw * 0.5, y1 + depth * 0.1); g.lineTo(cx - bw * 0.5, y1 + depth * 0.1); g.closePath(); g.fill();
+  // 光落在桌上的一块椭圆
+  g.fillStyle = 'rgba(53,129,121,0.35)';
+  g.save(); g.translate(cx, cy + depth * 0.08); g.scale(1, depth / bw); g.beginPath(); g.arc(0, 0, bw * 0.78, 0, Math.PI * 2); g.restore(); g.fill(); // 微信旧版画布没有 ellipse，用压扁的圆
+  // 板的厚度（前侧面）+ 一道长影子
+  const thick = depth * 0.1;
+  g.fillStyle = 'rgba(0,0,0,0.55)';
+  g.beginPath(); const [ax, ay] = P2(0, 1), [bx, by] = P2(1, 1);
+  g.moveTo(ax, ay); g.lineTo(bx, by); g.lineTo(bx + bw * 0.5, by + depth * 0.9); g.lineTo(ax + bw * 0.25, ay + depth * 0.9); g.closePath(); g.fill();
+  g.fillStyle = '#0F1715';
+  g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.lineTo(bx, by + thick); g.lineTo(ax, ay + thick); g.closePath(); g.fill();
+  // 九块：每块之间留缝，暗的是深墨绿，正中那块亮琥珀
+  const gap = 0.035;
+  let lit = null;
+  for (let r = 0; r < 3; r++) {
+    for (let col = 0; col < 3; col++) {
+      const u0 = col / 3 + gap, u1 = (col + 1) / 3 - gap, v0 = r / 3 + gap, v1 = (r + 1) / 3 - gap;
+      const q = [P2(u0, v0), P2(u1, v0), P2(u1, v1), P2(u0, v1)];
+      const isLit = r === 1 && col === 1;
+      // 块的厚度
+      g.fillStyle = isLit ? AMBER2 : '#0A100F';
+      g.beginPath(); g.moveTo(q[3][0], q[3][1]); g.lineTo(q[2][0], q[2][1]); g.lineTo(q[2][0], q[2][1] + thick * 0.55); g.lineTo(q[3][0], q[3][1] + thick * 0.55); g.closePath(); g.fill();
+      g.fillStyle = isLit ? AMBER : r === 0 ? '#1A2A28' : '#14201E';
+      g.beginPath(); q.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.fill();
+      if (isLit) {
+        // 一层纸白高光（极少）
+        g.fillStyle = 'rgba(238,230,208,0.55)';
+        g.beginPath(); g.moveTo(q[0][0] + 4, q[0][1] + 3); g.lineTo(q[1][0] - 4, q[1][1] + 3); g.lineTo(q[1][0] - 6, q[1][1] + 6); g.lineTo(q[0][0] + 6, q[0][1] + 6); g.closePath(); g.fill();
+        const mx = (q[0][0] + q[1][0] + q[2][0] + q[3][0]) / 4, my = (q[0][1] + q[1][1] + q[2][1] + q[3][1]) / 4;
+        lit = { x: mx, y: my, s: (q[1][0] - q[0][0] + q[2][0] - q[3][0]) / 2 };
+      }
+      inkLine(g, [q[0], q[1], q[2], q[3], q[0]], isLit ? 2.6 : 2.2, 11 + r * 3 + col);
+      // 琥珀逆光边：只给靠近光的上沿
+      if (!isLit && r === 0) { g.strokeStyle = 'rgba(224,176,64,0.5)'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(q[0][0] + 2, q[0][1]); g.lineTo(q[1][0] - 2, q[1][1]); g.stroke(); }
+    }
+  }
+  // 整块板的外轮廓（最粗的一圈墨线）
+  inkLine(g, [P2(0, 0), P2(1, 0), P2(1, 1), [P2(1, 1)[0], P2(1, 1)[1] + thick], [P2(0, 1)[0], P2(0, 1)[1] + thick], P2(0, 1), P2(0, 0)], 3.4, 97);
+  // 几颗浮尘
+  g.fillStyle = 'rgba(238,230,208,0.35)';
+  let s = 7;
+  for (let i = 0; i < 26; i++) { s = (s * 16807) % 2147483647; const x = cx + ((s / 2147483647) - 0.5) * bw * 1.2; s = (s * 16807) % 2147483647; const y = (s / 2147483647) * (y1 - 10); g.fillRect(x, y, 1.4, 1.4); }
+  return { canvas: c, lit };
+}
+
+// 取主页图（屏幕大小一张，缓存）。lit 是亮的那一块在屏幕上的位置
+function get(W, H, dpr) {
+  const key = W + 'x' + H + '|' + dpr + '|' + (mjImg ? 'mj' : 'code');
+  if (cache && cache.key === key) return cache;
+  if (C.HOME_ART.src && !mjTried) {
+    mjTried = true;
+    P.loadImage(C.HOME_ART.src, (img) => { if (img) { mjImg = img; cache = null; } });
+  }
+  if (mjImg && C.HOME_ART.lit) {
+    // 铺满（cover）裁两边；亮的那一块按裁完以后的坐标换算
+    const c = P.makeCanvas(Math.round(W * dpr), Math.round(H * dpr));
+    const g = c.getContext('2d');
+    const sc = Math.max(W / mjImg.width, H / mjImg.height);
+    const dw = mjImg.width * sc, dh = mjImg.height * sc, ox = (W - dw) / 2, oy = (H - dh) / 2;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.drawImage(mjImg, ox, oy, dw, dh);
+    const L = C.HOME_ART.lit;
+    cache = { key, canvas: c, lit: { x: ox + L.cx * dw, y: oy + L.cy * dh, s: L.s * dw } };
+  } else {
+    const r = drawPlaceholder(W, H, dpr);
+    cache = { key, canvas: r.canvas, lit: r.lit };
+  }
+  return cache;
+}
+
+// 画主页背景 + 上下两道遮罩（字看得清）
+function draw(ctx, W, H, dpr) {
+  const art = get(W, H, dpr);
+  ctx.drawImage(art.canvas, 0, 0, art.canvas.width, art.canvas.height, 0, 0, W, H);
+  const top = ctx.createLinearGradient(0, 0, 0, H * 0.3);
+  top.addColorStop(0, 'rgba(0,0,0,0.35)'); top.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = top; ctx.fillRect(0, 0, W, H * 0.3);
+  const bot = ctx.createLinearGradient(0, H * 0.6, 0, H);
+  bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(1, 'rgba(0,0,0,0.55)');
+  ctx.fillStyle = bot; ctx.fillRect(0, H * 0.6, W, H * 0.4);
+  return art;
+}
+
+module.exports = { get, draw, AMBER, PAPER, INK };
 
 });
 __def("js/main.js", function (module, exports, require) {
@@ -746,11 +1726,15 @@ require('./overlays.js')(app);
 require('./scene_look.js')(app);
 require('./scene_welcome.js')(app);
 require('./scene_challenge.js')(app);
+require('./cuts.js')(app);
 
 // 朋友点挑战卡进来：直接到那一题的挑战页
 if (!app.openChallenge(P.launchQuery())) {
-  if (!store.data.seen.tutorial) app.go('welcome');
-  else app.go('home');
+  if (!store.data.seen.tutorial) {
+    app.go('welcome');
+    // 第一次打开：开场过场（黑 → 那一块亮起来 → 主页图和游戏名亮相），播完露出「你玩过数独吗？」
+    if (!store.data.seen.open) app.cutOpen();
+  } else app.go('home');
 }
 P.onShow((q) => { if (q && q.c) app.openChallenge(q); });
 frame();
@@ -840,6 +1824,7 @@ module.exports = function (app) {
     ['mistakeLimit', '错 3 次算输', '关掉就不限次数'],
     ['autoNotes', '自动擦笔记', '填对一个数，同行同列同宫的这个笔记擦掉'],
     ['sameHighlight', '高亮相同数字', ''],
+    ['reduceMotion', '简洁动效', '过场只播短的，不震屏、不闪'],
     ['showTimer', '显示计时', ''],
     ['sound', '声音', ''],
     ['vibrate', '震动', ''],
@@ -1351,6 +2336,15 @@ function copyText(text) {
   return false;
 }
 
+// 读一张图（主页图）。微信用 wx.createImage，浏览器用 Image
+function loadImage(src, cb) {
+  try {
+    const img = isWx ? wx.createImage() : new Image();
+    img.onload = () => cb(img);
+    img.onerror = () => cb(null);
+    img.src = src;
+  } catch (e) { cb(null); }
+}
 function exposeForTest(name, value) {
   if (!isWx && typeof window !== 'undefined') window[name] = value;
 }
@@ -1359,7 +2353,7 @@ module.exports = {
   isWx, setup, makeCanvas, now, nextFrame, onHide, vibrate, setVibrate, showRewardedAd,
   hasOpenData, uploadScore, openDataCanvas, postOpenData, enableShare,
   load, save, exposeForTest, sound, unlockAudio, setMuted,
-  launchQuery, onShow, canvasImage, shareLink, shareToWx, systemShare, copyText,
+  loadImage, launchQuery, onShow, canvasImage, shareLink, shareToWx, systemShare, copyText,
 };
 
 });
@@ -1515,86 +2509,139 @@ module.exports = function (app) {
 
 });
 __def("js/scene_home.js", function (module, exports, require) {
-// 首页：标题、每日挑战卡、继续 / 新游戏、四块入口（教学、练脑、战绩、好友榜）。
+// 首页（0.7 精简，主页与过场设计_Fable_1.0.md 第三部分）：主页图 + 游戏名 + 一个会变的大按钮 + 一行小字 + 两个小图标。
+// 能点的从 8 个减到 4 个：大按钮（继续 / 接着学 / 新游戏）、小字（新游戏 › / 换难度 ›）、左下「今日」、右下「更多」。
+// 主页的颜色跟着主页图走，不跟主题走（主题只管进了游戏以后的棋盘）。
+const P = require('./platform.js');
 const ui = require('./ui.js');
+const C = require('./config.js');
 const S = require('./sudoku.js');
+const T = require('./tutorial.js');
 const store = require('./store.js');
 const bank = require('./puzzles.js');
+const HA = require('./homeart.js');
 
 module.exports = function (app) {
-  app.scenes.home = {
-    draw(ctx, t) {
-      const th = app.th, W = app.W;
-      // 左上设置（右上是微信胶囊）
-      const y0 = app.headerY;
-      const on = ui.button({ id: 'home-settings', x: 6, y: y0, w: 48, h: 44, onTap: () => app.settingsSheet() });
-      if (on) ui.fillRR(ctx, 10, y0 + 4, 36, 36, 18, th.soft);
-      ui.icons.gear(ctx, 28, y0 + 22, 24, th.sub);
+  app.TITLE = '数独'; // 名字定了以后改这里
+  const H0 = C.HOME;
+  Object.defineProperty(app, 'titleY', { get: () => Math.max(app.headerY + app.headerH + 46, app.H * 0.175) });
+  let coldStart = true; // 冷启动的那一次：亮的那块「啪」地点亮（0.3 秒，不拦操作）
 
-      // 标题
-      let y = y0 + 44 + 26;
-      ui.text(ctx, '数独', W / 2, y + 18, 40, th.text, 'center', 700);
-      ui.text(ctx, '每天一题 · 让脑子动一动', W / 2, y + 58, 14, th.sub, 'center');
-      y += 92;
+  // 大按钮写什么：有没做完的一局 → 继续；新手引导没走完 → 接着学；其他 → 新游戏（直接开推荐那一档）
+  function mainAction() {
+    const cur = store.data.current;
+    if (cur && !cur.done) {
+      const label = (cur.mode === 'daily' ? '每日挑战 · ' : cur.mode === 'challenge' ? '好友挑战 · ' : '') + S.TIERS[cur.tier].name + ' · ' + app.fmt(cur.elapsed);
+      return { title: '继续', sub: label, go: () => app.continueGame(), link: '新游戏 ›' };
+    }
+    if (store.data.level === 'new' && !store.data.lessons.rules) {
+      return { title: '接着学', sub: '第 1 课 · 规则', go: () => app.go('lesson', { index: 0, then: 'guided' }), link: '' };
+    }
+    const tier = store.data.lastTier != null ? store.data.lastTier : Math.max(0, app.recTier ? app.recTier() : 1);
+    return { title: '新游戏', sub: S.TIERS[tier].name, go: () => app.startGame(tier), link: '换难度 ›' };
+  }
 
-      // 每日挑战卡
-      const today = store.dateKey(new Date());
-      const pick = store.dailyPick(today, bank);
-      const doneToday = !!store.data.daily[today];
-      const ym = today.slice(0, 7);
-      const d = new Date();
-      const daysIn = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-      const doneMonth = Object.keys(store.data.daily).filter((k) => k.slice(0, 7) === ym).length;
-      const ch = 96;
-      const pd = ui.button({ id: 'home-daily', x: 16, y, w: W - 32, h: ch, onTap: () => app.go('daily') });
-      ui.card(ctx, 16, y, W - 32, ch, 18, th);
-      if (pd) ui.fillRR(ctx, 16, y, W - 32, ch, 18, (th.pageDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'));
-      ui.icons.calendar(ctx, 46, y + 32, 26, th.primary);
-      ui.text(ctx, '每日挑战', 68, y + 32, 17, th.text, 'left', 600);
-      ui.text(ctx, (d.getMonth() + 1) + '月' + d.getDate() + '日 · ' + S.TIERS[pick.tier].name + (doneToday ? ' · 已完成 ✓' : ''), 32, y + 66, 13, doneToday ? th.ok : th.sub);
-      ui.icons.trophy(ctx, W - 60, y + 40, 40, doneMonth >= daysIn ? th.gold : th.primary, doneMonth / daysIn);
-      ui.text(ctx, '本月 ' + doneMonth + '/' + daysIn, W - 60, y + 74, 12, th.sub, 'center');
-      y += ch + 18;
-
-      // 继续 / 新游戏
-      const cur = store.data.current;
-      if (cur && !cur.done) {
-        const bh = 62;
-        const pc = ui.button({ id: 'home-continue', x: 16, y, w: W - 32, h: bh, onTap: () => app.continueGame() });
-        ctx.save();
-        if (pc) { ctx.translate(W / 2, y + bh / 2); ctx.scale(0.98, 0.98); ctx.translate(-W / 2, -y - bh / 2); }
-        ui.fillRR(ctx, 16, y, W - 32, bh, 18, th.primary);
-        ui.text(ctx, '继续游戏', W / 2, y + 23, 18, th.primaryText, 'center', 600);
-        const label = (cur.mode === 'daily' ? '每日挑战 · ' : '') + S.TIERS[cur.tier].name + ' · ' + app.fmt(cur.elapsed);
-        ctx.globalAlpha = 0.8;
-        ui.text(ctx, label, W / 2, y + 44, 12, th.primaryText, 'center');
-        ctx.globalAlpha = 1;
-        ctx.restore();
-        y += bh + 12;
-        ui.pill(ctx, th, 'home-new', 16, y, W - 32, 54, '新游戏', () => app.difficultySheet(), 'card');
-        y += 54 + 22;
-      } else {
-        ui.pill(ctx, th, 'home-new', 16, y, W - 32, 60, '新游戏', () => app.difficultySheet(), 'primary');
-        y += 60 + 22;
-      }
-
-      // 四块入口
-      const tiles = [
-        { id: 'lessons', label: '教学', sub: '五课学会', icon: 'book' },
-        { id: 'brain', label: '数独练脑', sub: '研究怎么说', icon: 'brain' },
-        { id: 'stats', label: '战绩', sub: '每档统计', icon: 'chart' },
-        { id: 'rank', label: '好友榜', sub: '和好友比', icon: 'medal' },
+  // 「更多」：半屏面板，六行
+  app.moreSheet = () => app.push({
+    onBackdrop: () => app.pop(),
+    draw(ctx, t, p) {
+      const th = app.th, rowH = 56;
+      const learned = T.LESSONS.filter((L) => store.data.lessons[L.id]).length;
+      const rows = [
+        ['教学', '已学 ' + learned + ' / ' + T.LESSONS.length, () => app.go('lessons')],
+        ['主题', th.name, () => app.go('look', { back: { name: 'home' } })],
+        ['战绩', '', () => app.go('stats')],
+        ['好友榜', '', () => app.go('rank')],
+        ['数独练脑', '', () => app.go('brain')],
+        ['设置', '', () => { app.pop(); app.settingsSheet({ name: 'home' }); }],
       ];
-      const gap = 12, tw = (W - 32 - gap) / 2, tH = Math.min(84, Math.max(64, (app.bottom - 30 - y - gap) / 2));
-      tiles.forEach((tl, i) => {
-        const x = 16 + (i % 2) * (tw + gap), ty = y + Math.floor(i / 2) * (tH + gap);
-        const p = ui.button({ id: 'home-' + tl.id, x, y: ty, w: tw, h: tH, onTap: () => app.go(tl.id) });
-        ui.card(ctx, x, ty, tw, tH, 16, th);
-        if (p) ui.fillRR(ctx, x, ty, tw, tH, 16, (th.pageDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'));
-        ui.icons[tl.icon](ctx, x + 30, ty + tH / 2, 26, th.primary);
-        ui.text(ctx, tl.label, x + 54, ty + tH / 2 - 10, 16, th.text, 'left', 600);
-        ui.text(ctx, tl.sub, x + 54, ty + tH / 2 + 12, 12, th.sub);
+      const h = 58 + rows.length * rowH + 16 + (app.H - app.bottom);
+      const y = app.sheet(ctx, p, h, '');
+      rows.forEach(([name, sub, go], i) => {
+        const ry = y + 26 + i * rowH;
+        const on = ui.button({ id: 'more-' + i, x: 12, y: ry, w: app.W - 24, h: rowH - 4, onTap: () => { if (i !== 5) app.pop(); go(); } });
+        if (on) ui.fillRR(ctx, 12, ry, app.W - 24, rowH - 4, 12, th.soft);
+        ui.text(ctx, name, 32, ry + (rowH - 4) / 2, 17, th.text, 'left', 600);
+        if (sub) ui.text(ctx, sub, app.W - 52, ry + (rowH - 4) / 2, 13, th.sub, 'right');
+        ui.icons.chevron(ctx, app.W - 34, ry + (rowH - 4) / 2, 18, th.faint);
       });
+    },
+  });
+
+  // 今日小图标：日历，里面写今天的日期；今天没做右上一个琥珀小点，做完变 ✓
+  function drawToday(ctx, cx, cy, on) {
+    const d = new Date(), done = !!store.data.daily[store.dateKey(d)];
+    ctx.save();
+    if (on) { ctx.translate(cx, cy); ctx.scale(0.92, 0.92); ctx.translate(-cx, -cy); }
+    ui.stroke(ctx, H0.title, 2);
+    ui.rr(ctx, cx - 15, cy - 13, 30, 28, 5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - 15, cy - 5); ctx.lineTo(cx + 15, cy - 5); ctx.stroke();
+    ui.text(ctx, String(d.getDate()), cx, cy + 5, 13, H0.title, 'center', 700);
+    if (done) { ctx.beginPath(); ctx.arc(cx + 15, cy - 13, 7, 0, Math.PI * 2); ctx.fillStyle = H0.amber; ctx.fill(); ui.icons.check(ctx, cx + 15, cy - 13, 9, '#141A17', 2); }
+    else { ctx.beginPath(); ctx.arc(cx + 15, cy - 13, 4.5, 0, Math.PI * 2); ctx.fillStyle = H0.amber; ctx.fill(); }
+    ctx.restore();
+    ui.text(ctx, '今日', cx, cy + 30, 11, H0.sub, 'center');
+  }
+  function drawMore(ctx, cx, cy, on) {
+    ctx.save();
+    if (on) { ctx.translate(cx, cy); ctx.scale(0.92, 0.92); ctx.translate(-cx, -cy); }
+    ui.stroke(ctx, H0.title, 2.4);
+    for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(cx - 13, cy + i * 8); ctx.lineTo(cx + 13, cy + i * 8); ctx.stroke(); }
+    ctx.restore();
+    ui.text(ctx, '更多', cx, cy + 30, 11, H0.sub, 'center');
+  }
+
+  app.scenes.home = {
+    enter() { this.t0 = P.now(); this.cold = coldStart && !!store.data.seen.open; coldStart = false; },
+    // 进主页后呼吸光播 6 秒就停（省电）；冷启动那一下 0.4 秒
+    live(t) { return t - this.t0 < 6000; },
+    draw(ctx, t) {
+      const W = app.W, H = app.H;
+      const art = HA.draw(ctx, W, H, app.dpr);
+      const L = art.lit, e = t - this.t0;
+      // 亮的那一块：一团很淡的琥珀光，4 秒一次呼吸
+      ctx.save();
+      ctx.globalAlpha = 0.15 * (0.5 - 0.5 * Math.cos((e / 4000) * Math.PI * 2));
+      const gr = ctx.createRadialGradient(L.x, L.y, 0, L.x, L.y, L.s * 1.6);
+      gr.addColorStop(0, H0.amber); gr.addColorStop(1, 'rgba(224,176,64,0)');
+      ctx.fillStyle = gr; ctx.fillRect(L.x - L.s * 2, L.y - L.s * 2, L.s * 4, L.s * 4);
+      ctx.restore();
+      // 冷启动：先压暗，第 6 帧亮的那块「啪」地点亮（只闪它周围），一声轻「叮」
+      if (this.cold && e < 400) {
+        if (e < 100) { ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(0, 0, W, H); }
+        else {
+          if (!this.dinged) { this.dinged = true; app.sound('bell9', 0.3); }
+          const k = 1 - (e - 100) / 300;
+          ctx.save(); ctx.globalAlpha = 0.25 * k;
+          ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(L.x, L.y, L.s * (1 + (1 - k) * 0.8), 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+      }
+      // 游戏名
+      ui.text(ctx, app.TITLE, W / 2, app.titleY, 44, H0.title, 'center', 800);
+      // 大按钮
+      const a = mainAction();
+      const bw = Math.round(W * 0.72), bh = 62, bx = (W - bw) / 2, by = Math.round(Math.min(H * 0.7, app.bottom - 170));
+      const on = ui.button({ id: 'home-main', x: bx, y: by, w: bw, h: bh, onTap: a.go });
+      ctx.save();
+      if (on) { ctx.translate(W / 2, by + bh / 2); ctx.scale(0.97, 0.97); ctx.translate(-W / 2, -by - bh / 2); }
+      ui.fillRR(ctx, bx, by, bw, bh, 18, H0.button);
+      ui.text(ctx, a.title, W / 2, by + 24, 20, H0.buttonText, 'center', 800);
+      ctx.globalAlpha = 0.7;
+      ui.text(ctx, a.sub, W / 2, by + 45, 12, H0.buttonText, 'center', 600);
+      ctx.restore();
+      // 一行小字
+      if (a.link) {
+        const ly = by + bh + 26;
+        const lon = ui.button({ id: 'home-link', x: W / 2 - 70, y: ly - 22, w: 140, h: 44, onTap: () => app.difficultySheet() });
+        ui.text(ctx, a.link, W / 2, ly, 14, lon ? H0.title : H0.sub, 'center', 600);
+      }
+      // 两个小图标
+      const iy = app.bottom - 52;
+      const tOn = ui.button({ id: 'home-daily', x: 18, y: iy - 26, w: 64, h: 70, onTap: () => app.go('daily') });
+      drawToday(ctx, 50, iy, tOn);
+      const mOn = ui.button({ id: 'home-more', x: W - 82, y: iy - 26, w: 64, h: 70, onTap: () => app.moreSheet() });
+      drawMore(ctx, W - 50, iy, mOn);
     },
   };
 };
@@ -1713,12 +2760,31 @@ module.exports = function (app) {
     lesson.totalMisses += lesson.misses;
     if (lesson.si + 1 < lesson.steps.length) { lesson.si++; loadStep(); app.animate(300); return; }
     if (lesson.quiz) { app.quizDone(lesson.totalMisses); return; }
-    // 学完
+    // 学完：先入账，再播过场（主页与过场设计 2.4、2.5），播完弹「下一课」
     const L0 = T.LESSONS[lesson.index];
+    const relearn = !!store.data.lessons[L0.id];
     store.data.lessons[L0.id] = true;
+    const seen = store.data.seen;
+    const allNow = T.LESSONS.every((x) => store.data.lessons[x.id]);
     store.save();
-    app.sound('win');
-    finished();
+    if (lesson.then && lesson.then.tier !== undefined) {
+      // 升档学新招：第一次升档、升到大师播完整版，其余短版
+      const tier = lesson.then.tier;
+      const full = !seen.cutTierAny || tier === 5;
+      seen.cutTierAny = true; store.save();
+      app.cutTier(tier, L0.name, { short: !full, onEnd: finished });
+    } else if (allNow && !seen.allSeven) {
+      // 七招全会：一辈子一次
+      seen.allSeven = true; store.save();
+      app.cutLesson(lesson.index, L0.name, { all: true, onEnd: finished });
+    } else if (relearn) {
+      app.sound('correct');
+      finished(); // 重学一门学过的：不播
+    } else {
+      const full = lesson.index === 0 && !seen.cutLesson0;
+      if (lesson.index === 0) { seen.cutLesson0 = true; store.save(); }
+      app.cutLesson(lesson.index, L0.name, { short: !full, onEnd: finished });
+    }
   }
   function finished() {
     const i = lesson.index, ret = lesson.returnTo;
@@ -1999,18 +3065,29 @@ module.exports = function (app) {
   // ---------- 结算 ----------
   let res = null;
   app.scenes.result = {
-    enter(args) { res = { b: args.board, t0: P.now() }; },
+    enter(args) {
+      res = { b: args.board, t0: P.now(), fromCut: !!args.fromCut };
+      // 从通关过场硬切过来：页面安静，一声很轻的「嗒」，按钮晚 20 帧再出来（反差回落）
+      if (res.fromCut) { app.sound('soft'); res.icon = app.cutTileImg(56, { body: '#E9C25A', edge: '#A9832A', ink: '#3A2A08' }, { check: true, bars: res.b.tier + 1 }); }
+    },
     live: (t) => t - res.t0 < 1200,
+    ready: () => !res.fromCut || P.now() - res.t0 > 330,
     draw(ctx, t) {
       const th = app.th, W = app.W, b = res.b;
       const p = Math.min(1, (t - res.t0) / 900);
       let y = app.headerY + 30;
-      // 勾：圆从小弹到大
-      const s = ui.ease.back(Math.min(1, (t - res.t0) / 450));
-      ctx.save(); ctx.translate(W / 2, y + 36); ctx.scale(s, s);
-      ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2); ctx.fillStyle = th.ok; ctx.fill();
-      ui.icons.check(ctx, 0, 0, 40, '#FFFFFF', 4);
-      ctx.restore();
+      if (res.icon) {
+        // 过场里那块金方块缩在页面顶上
+        const iw = res.icon.width / app.dpr, ih = res.icon.height / app.dpr;
+        ctx.drawImage(res.icon, 0, 0, res.icon.width, res.icon.height, W / 2 - iw / 2, y + 36 - ih / 2, iw, ih);
+      } else {
+        // 勾：圆从小弹到大
+        const s = ui.ease.back(Math.min(1, (t - res.t0) / 450));
+        ctx.save(); ctx.translate(W / 2, y + 36); ctx.scale(s, s);
+        ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2); ctx.fillStyle = th.ok; ctx.fill();
+        ui.icons.check(ctx, 0, 0, 40, '#FFFFFF', 4);
+        ctx.restore();
+      }
       y += 96;
       const tierName = S.TIERS[b.tier].name;
       const half = (W - 32 - 10) / 2;
@@ -2030,6 +3107,7 @@ module.exports = function (app) {
           ui.text(ctx, mis ? '错 ' + mis + ' 次' : '一次没错', x + cw / 2, y + 104, 13, th.sub, 'center');
         });
         y += chh + 22;
+        if (!app.scenes.result.ready()) { app.animate(400); return; } // 按钮晚 20 帧
         ui.pill(ctx, th, 'res-reply', 16, y, W - 32, 54, r.win ? '发回去，让他再来' : '发回去挑战他', () => app.shareChallenge(b, true), 'primary');
         y += 64;
         ui.pill(ctx, th, 'res-again', 16, y, half, 50, '再来一局', () => app.startGame(b.tier), 'card');
@@ -2040,7 +3118,7 @@ module.exports = function (app) {
       ui.text(ctx, (b.mode === 'daily' ? '每日挑战 · ' + b.date.slice(5).replace('-', '月') + '日 · ' : '') + tierName, W / 2, y + 34, 14, th.sub, 'center');
       y += 70;
       // 分数滚上去
-      const shown = Math.round(b.score * ui.ease.out(p));
+      const shown = res.fromCut ? b.score : Math.round(b.score * ui.ease.out(p));
       ui.text(ctx, String(shown), W / 2, y + 20, 44, th.primary, 'center', 700);
       ui.text(ctx, b.newBestScore ? '本档最高分！' : '分', W / 2, y + 56, 13, b.newBestScore ? th.gold : th.sub, 'center', 600);
       y += 80;
@@ -2058,6 +3136,7 @@ module.exports = function (app) {
       });
       y += rows.length * rh + 10 + 18;
       // 按钮：发给朋友挑战这一题（主按钮）；再来一局 / 回首页并排
+      if (!app.scenes.result.ready()) { app.animate(400); return; } // 按钮晚 20 帧
       ui.pill(ctx, th, 'res-share', 16, y, W - 32, 54, '发给朋友挑战这一题', () => app.shareChallenge(b), 'primary');
       y += 64;
       if (b.mode === 'daily') ui.pill(ctx, th, 'res-cal', 16, y, half, 50, '回日历', () => app.go('daily'), 'card');
@@ -2331,7 +3410,7 @@ module.exports = function (app) {
   let L = null; // 布局
   let hintBelow = true;
 
-  const resetFx = () => { fx = { pops: {}, rings: [], flash: [], shake: null, floats: [], hops: {}, keyDone: {}, confetti: [] }; };
+  const resetFx = () => { fx = { pops: {}, rings: [], flash: [], shake: null, floats: [], hops: {}, keyDone: {}, events: [], gold: {}, sparks: [], digit: null, boardShake: null }; };
   let party = null; // 通关庆祝：{ t0, k }
 
   function layout() {
@@ -2370,6 +3449,7 @@ module.exports = function (app) {
       store.data.next[tier] = (idx + 1) % half;
     }
     store.startGame(tier, mode);
+    if (mode === 'normal' && !opts.guided) store.data.lastTier = tier;
     const nb = Board.create({ mode, tier, idx, date: opts.date, puzzle: bank[tier][idx], guided: opts.guided });
     store.data.current = nb;
     store.save();
@@ -2431,6 +3511,7 @@ module.exports = function (app) {
     if (r.gain) fx.floats.push({ k, t0: t + 120, text: '+' + r.gain });
     app.sound('tile');
     // 填满一行 / 列 / 宫：从这一格往两边一格格跳一下、亮一下（等方块落稳再开始）
+    const land = t + 150; // 方块落地的那一刻
     r.units.forEach((u) => {
       S.UNITS[u].forEach((x) => {
         const d = Math.abs(S.ROW(x) - S.ROW(k)) + Math.abs(S.COL(x) - S.COL(k));
@@ -2438,90 +3519,150 @@ module.exports = function (app) {
         if (x !== k) fx.hops[x] = t + 220 + d * 45;
       });
     });
-    if (r.units.length && !r.win) { setTimeout(() => app.sound('unit'), 220); setTimeout(() => app.buzz('medium'), 220); }
-    if (r.digitDone && !r.win) {
-      for (let x = 0; x < 81; x++) if (b.vals[x] === v) { fx.flash.push({ k: x, t0: t + 300, dur: 600, color: app.th.gold, alpha: 0.4 }); fx.hops[x] = t + 300; }
-      fx.keyDone[v] = t + 300;
-      setTimeout(() => app.sound('digit'), 300);
-    }
+    // 同一步撞在一起：只响一个声音、只震一次。优先级：通关 > 数字填完 > 行列宫
+    if (r.units.length && !r.win && !r.digitDone) later(220, () => { app.sound('unit'); app.buzz('medium'); });
+    if (r.digitDone && !r.win) digitBurst(v, land);
     app.animate(1200);
     if (r.win) onWin(t);
   }
-  // 通关：从最后一格往外一圈圈波浪点亮、每格跳一下 → 两门彩纸炮 + 顶上撒彩纸 → 「完成！」→ 结算。约 2.8 秒，点一下跳过
-  const PARTY_MS = 2800;
+
+  // ---------- 按时间排的小事件（代替到处 setTimeout：同一时刻的事在同一帧里做）----------
+  function later(ms, fn) { fx.events.push({ at: P.now() + ms, fn }); }
+  function runEvents(t) {
+    if (!fx.events.length) return;
+    const due = fx.events.filter((e) => e.at <= t);
+    if (!due.length) return;
+    fx.events = fx.events.filter((e) => e.at > t);
+    due.forEach((e) => e.fn(t));
+  }
+
+  // ---------- 某个数 9 个都填完：原地「顿一下再爆」（0.43 秒，不盖屏、不锁输入）----------
+  // 顿（9 块硬切成金面）→ 出手（9 块同时放大 1.18，不缓动）→ 命中（各一层白光、弹回、金线串起、键上打勾、火星、棋盘轻抖、铃音）
+  function digitBurst(v, land) {
+    const D = C.CUT.digit, F = 1000 / 60;
+    b.digitCount = (b.digitCount || 0) + 1;
+    const full = b.digitCount === 1 && !store.data.settings.reduceMotion;
+    const hold = (full ? D.hold : D.holdShort) * F, hit = (full ? D.hit : D.hitShort) * F;
+    const cells = [];
+    for (let x = 0; x < 81; x++) if (b.vals[x] === v) cells.push(x);
+    const tS = land + hold, tH = tS + D.strike * F, tEnd = tH + hit;
+    cells.forEach((x) => { fx.gold[x] = [land, tEnd]; });
+    fx.digit = { cells, tS, tH, tEnd, full };
+    later(tH - P.now(), (t) => {
+      cells.forEach((x) => fx.flash.push({ k: x, t0: t, dur: 12 * F, color: '#FFFFFF', alpha: 0.6 }));
+      cells.forEach((x) => sparkAt(x, full ? 3 : 2));
+      if (full) fx.boardShake = { t0: t, dur: 6 * F, amp: 2 };
+      app.sound('bell' + Math.min(8, b.digitCount));
+      app.buzz('medium');
+    });
+    fx.keyDone[v] = tS;
+    app.animate(tEnd - P.now() + 100);
+  }
+  // 单格缩放：数字填完的「出手」放大 → 弹回；通关长停时整盘呼吸
+  function cellScale(k, t) {
+    const d = fx.digit;
+    if (d && t >= d.tS && t < d.tEnd && d.cells.indexOf(k) >= 0) {
+      if (t < d.tH) return C.CUT.digit.scale;
+      const p = Math.min(1, (t - d.tH) / (10 * 1000 / 60));
+      return C.CUT.digit.scale - (C.CUT.digit.scale - 1) * ui.ease.back(p);
+    }
+    if (party && party.breathFrom && t >= party.breathFrom) return 1 + 0.02 * Math.sin(Math.min(1, (t - party.breathFrom) / 750) * Math.PI);
+    return 1;
+  }
+  function sparkAt(k, n) {
+    const r = DB.cellRect(geo, k);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 60 + Math.random() * 120;
+      fx.sparks.push({ x: r.x + r.s / 2, y: r.y + r.s / 2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60, life: 0, max: 300 + Math.random() * 300 });
+    }
+  }
+  function stepSparks(dt) {
+    const s = dt / 1000;
+    fx.sparks.forEach((p) => { p.vy += 500 * s; p.x += p.vx * s; p.y += p.vy * s; p.life += dt; });
+    fx.sparks = fx.sparks.filter((p) => p.life < p.max);
+  }
+  function drawSparks(ctx) {
+    for (const p of fx.sparks) {
+      ctx.globalAlpha = Math.max(0, 1 - p.life / p.max);
+      ctx.strokeStyle = '#FFC24A'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * 0.03, p.y - p.vy * 0.03); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  // 金线：8 帧一笔把 9 块串起来，再 10 帧淡掉（只有每局第一次）
+  function drawGoldLine(ctx, t) {
+    const d = fx.digit, F = 1000 / 60;
+    if (!d || !d.full || t < d.tH || t > d.tH + 18 * F) return;
+    const p = (t - d.tH) / (8 * F), fade = Math.max(0, 1 - (t - d.tH - 8 * F) / (10 * F));
+    const pts = d.cells.map((k) => { const r = DB.cellRect(geo, k); return [r.x + r.s / 2, r.y + r.s / 2]; });
+    const n = Math.min(pts.length, Math.max(1, Math.ceil(p * pts.length)));
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, fade);
+    ctx.strokeStyle = '#F5C531'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); pts.slice(0, n).forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+    ctx.restore();
+  }
+
+  // ---------- 通关：第一段在棋盘上，第二段交给过场播放器 ----------
+  // 顿（棋盘以外硬切成近黑、计时停、重震）→ 金色从最后一格一圈圈漫满（每圈一声嗒，越来越高）→ 81 格全金长停呼吸
+  // → 截下棋盘 → 播放器：整盘压扁收成一块金方块「咚」→ 光阵底「完成！」→ 硬切到安静的结算页
   function onWin(t) {
     winAt = t;
-    const last = b.selected;
+    const last = b.selected >= 0 ? b.selected : 40;
     b.selected = -1;
+    hint = null;
+    // 奖励先入账，再播
+    const firstEver = !store.data.seen.firstClear;
+    const firstTier = !(store.data.seen.clearTier || {})[b.tier];
     store.recordWin(b);
-    party = { t0: t, k: last };
-    for (let x = 0; x < 81; x++) {
-      const d = Math.hypot(S.ROW(x) - S.ROW(last), S.COL(x) - S.COL(last));
-      fx.flash.push({ k: x, t0: t + 250 + d * 70, dur: 520, alpha: 0.65 });
-      fx.hops[x] = t + 250 + d * 70;
+    store.data.seen.firstClear = true;
+    store.data.seen.clearTier = Object.assign({}, store.data.seen.clearTier, { [b.tier]: true });
+    store.save();
+    const won = b.mode === 'challenge' && app.challengeResult(b).win;
+    const full = !store.data.settings.reduceMotion && (firstEver || firstTier || b.mode === 'daily' || b.newBest || won);
+    const tn = S.TIERS[b.tier].name;
+    const head = b.mode === 'daily' ? '今日完成' : won ? '你赢了' : b.newBest && !firstTier ? '新纪录 ' + app.fmt(b.elapsed) : firstTier ? '首次通关 · ' + tn : '完成！';
+    const WIN = C.CUT.win, F = 1000 / 60;
+    party = { t0: t, last, full, head, sub: app.fmt(b.elapsed) + ' · ' + b.score + ' 分' };
+    app.buzz('heavy');
+    const land = t + 150;
+    if (full) {
+      // 波浪：按「隔几格」算（切比雪夫距离），每圈 6 帧
+      let maxD = 0;
+      for (let x = 0; x < 81; x++) {
+        const d = Math.max(Math.abs(S.ROW(x) - S.ROW(last)), Math.abs(S.COL(x) - S.COL(last)));
+        maxD = Math.max(maxD, d);
+        const at = land + WIN.freeze * F + d * WIN.ring * F;
+        fx.gold[x] = [at, Infinity];
+        fx.hops[x] = at;
+      }
+      for (let d = 0; d <= maxD; d++) later(land + WIN.freeze * F + d * WIN.ring * F - P.now(), () => app.sound('tick' + Math.min(9, d + 1)));
+      const holdFrom = land + WIN.freeze * F + (maxD + 1) * WIN.ring * F + 300;
+      party.breathFrom = holdFrom;
+      later(holdFrom + WIN.hold * F - P.now(), () => toPlayer());
+    } else {
+      later(land + WIN.freezeShort * F - P.now(), () => toPlayer());
     }
-    setTimeout(() => { app.sound('fanfare'); app.buzz('heavy'); }, 250);
-    setTimeout(() => { if (party) { burst(); app.sound('confetti'); app.buzz('medium'); } }, 750);
-    setTimeout(() => endParty(), PARTY_MS);
+    app.animate(6000);
+  }
+  function toPlayer() {
+    if (!party || party.playing) return;
+    party.playing = true;
+    // 截下棋盘（和真棋盘同样大小、同样位置，接得上）
+    const d = app.dpr, pad = 6;
+    const shot = P.makeCanvas(Math.round((geo.size + pad * 2) * d), Math.round((geo.size + pad * 2) * d));
+    const g = shot.getContext('2d');
+    g.setTransform(d, 0, 0, d, 0, 0);
+    DB.draw(g, app.th, { x: pad, y: pad, size: geo.size }, {
+      vals: b.vals, given: b.given, notes: b.notes, wrong: () => false, selected: -1, gold: fx.gold, now: P.now() + 99999, tileStyle: store.data.settings.tileStyle,
+    }, d);
+    const sgeo = { x: geo.x - pad, y: geo.y - pad, size: geo.size + pad * 2 };
+    app.cutWin(shot, sgeo, b.tier, party.head, party.sub, { short: !party.full, onEnd: endParty });
   }
   function endParty() {
     if (!party) return;
     party = null;
-    app.go('result', { board: b });
-  }
-  // 彩纸：左下、右下两门炮往上斜着打，再从顶上飘一阵
-  function burst() {
-    const th = app.th, W = app.W;
-    const colors = [th.primary, th.gold, th.ok, th.wrong, th.glow, (th.tileB || [th.user])[0]];
-    const rnd = Math.random;
-    const add = (x, y, vx, vy) => fx.confetti.push({ x, y, vx, vy, rot: rnd() * 6, vr: (rnd() - 0.5) * 14, w: 5 + rnd() * 5, h: 8 + rnd() * 6, c: colors[(rnd() * colors.length) | 0], ph: rnd() * 6, round: rnd() < 0.25 });
-    for (let i = 0; i < 70; i++) {
-      const sp = 650 + rnd() * 550, a = (-62 - rnd() * 22) * Math.PI / 180;
-      add(-10, app.H * 0.78, Math.cos(a) * sp, Math.sin(a) * sp);
-      add(W + 10, app.H * 0.78, -Math.cos(a) * sp, Math.sin(a) * sp);
-    }
-    for (let i = 0; i < 50; i++) add(rnd() * W, -20 - rnd() * 200, (rnd() - 0.5) * 80, 60 + rnd() * 120);
-  }
-  function stepConfetti(dt) {
-    const s = dt / 1000;
-    for (const p of fx.confetti) {
-      p.vy += 900 * s;
-      p.vx *= Math.pow(0.35, s);
-      p.vy *= Math.pow(0.55, s);
-      p.x += (p.vx + Math.sin(p.ph + p.y / 40) * 30) * s;
-      p.y += p.vy * s;
-      p.rot += p.vr * s;
-    }
-    fx.confetti = fx.confetti.filter((p) => p.y < app.H + 40);
-  }
-  function drawParty(ctx, th, t) {
-    for (const p of fx.confetti) {
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.rot);
-      ctx.scale(1, Math.abs(Math.cos(p.rot * 1.3)) * 0.8 + 0.2); // 翻转时变窄，像纸片在转
-      ctx.fillStyle = p.c;
-      if (p.round) { ctx.beginPath(); ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2); ctx.fill(); }
-      else ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-      ctx.restore();
-    }
-    // 「完成！」大字：0.9 秒时弹出来
-    const e = t - party.t0 - 900;
-    if (e > 0) {
-      const p = Math.min(1, e / 380);
-      const s = ui.ease.back(p);
-      const cy = geo.y + geo.size / 2;
-      ctx.save();
-      ctx.globalAlpha = Math.min(1, p * 1.5);
-      ctx.translate(app.W / 2, cy);
-      ctx.scale(s, s);
-      ui.fillRR(ctx, -110, -46, 220, 92, 28, th.card);
-      ui.rr(ctx, -110, -46, 220, 92, 28); ctx.strokeStyle = th.gold; ctx.lineWidth = 3; ctx.stroke();
-      ui.text(ctx, '完成！', 0, -6, 38, th.text, 'center', 800);
-      ui.text(ctx, app.fmt(b.elapsed) + ' · ' + b.score + ' 分', 0, 28, 14, th.sub, 'center', 600);
-      ctx.restore();
-    }
-    ui.text(ctx, '点一下继续', app.W / 2, app.bottom - 22, 12, th.sub, 'center');
+    app.go('result', { board: b, fromCut: true });
   }
   function showLost() {
     app.sound('lose');
@@ -2698,7 +3839,7 @@ module.exports = function (app) {
     leave() { persist(); },
     onHide() { if (b && !b.done && !winAt) { paused = true; persist(); app.redraw(); } },
     update(dt, t) {
-      if (fx && fx.confetti.length) stepConfetti(dt);
+      if (fx) { runEvents(t); if (fx.sparks.length) stepSparks(dt); }
       if (!b || paused || winAt || b.lost || app.overlays.length) return;
       b.elapsed += dt;
       const sec = Math.floor(b.elapsed / 1000);
@@ -2706,7 +3847,7 @@ module.exports = function (app) {
       saveTimer += dt;
       if (saveTimer > 3000) { saveTimer = 0; persist(); }
     },
-    live: (t) => !!party || (!!hint && t - hint.t0 < 400) || (!!b && b.guided && b.guideLeft > 0),
+    live: (t) => !!party || (!!hint && t - hint.t0 < 400) || (!!b && b.guided && b.guideLeft > 0) || (!!fx && (fx.sparks.length > 0 || fx.events.length > 0)),
     draw(ctx, t) {
       const th = app.th;
       const tierName = S.TIERS[b.tier].name;
@@ -2721,12 +3862,21 @@ module.exports = function (app) {
 
       // 棋盘（按下就选中）
       ui.button({ id: 'board', x: geo.x, y: geo.y, w: geo.size, h: geo.size, silent: true, onDown: (x, y) => select(DB.cellAt(geo, x, y)) });
-      DB.draw(ctx, th, geo, {
+      // 数字填完时棋盘轻抖（只抖棋盘）
+      let bgeo = geo;
+      if (fx.boardShake && t - fx.boardShake.t0 < fx.boardShake.dur) {
+        const k2 = 1 - (t - fx.boardShake.t0) / fx.boardShake.dur;
+        bgeo = { x: geo.x + (Math.random() - 0.5) * 2 * fx.boardShake.amp * k2, y: geo.y + (Math.random() - 0.5) * 2 * fx.boardShake.amp * k2, size: geo.size };
+      }
+      DB.draw(ctx, th, bgeo, {
+        gold: fx.gold, cellScale,
         vals: b.vals, given: b.given, notes: b.notes, wrong: (k) => Board.isWrong(b, k),
         selected: b.selected, selDigit, sameHighlight: store.data.settings.sameHighlight,
         hintCells: hint ? hint.cells : guide && b.guideLeft > 0 ? guide.cells : null,
         pops: fx.pops, rings: fx.rings, flash: fx.flash, shake: fx.shake, hops: fx.hops, now: t, tileStyle: store.data.settings.tileStyle,
       }, app.dpr);
+      drawGoldLine(ctx, t);
+      drawSparks(ctx);
       if (paused) {
         ui.fillRR(ctx, geo.x, geo.y, geo.size, geo.size, 10, th.board);
         ui.text(ctx, '已暂停', app.W / 2, geo.y + geo.size / 2 - 30, 20, th.text, 'center', 600);
@@ -2754,9 +3904,12 @@ module.exports = function (app) {
       app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone, active: selDigit });
       if (hint) drawHintCard(ctx, th, t);
       else if (b.guided && b.guideLeft > 0 && !winAt && !paused) drawGuide(ctx, th, t);
-      if (party) {
-        drawParty(ctx, th, t);
-        ui.button({ id: 'party-skip', x: 0, y: 0, w: app.W, h: app.H, onTap: endParty }); // 点一下跳过
+      // 通关第一段：棋盘以外硬切成近黑（点一下直接进第二段）
+      if (party && !party.playing) {
+        ctx.fillStyle = '#0E0E0E';
+        ctx.fillRect(0, 0, app.W, geo.y - 6); ctx.fillRect(0, geo.y + geo.size + 6, app.W, app.H - geo.y - geo.size - 6);
+        ctx.fillRect(0, geo.y - 6, geo.x - 6, geo.size + 12); ctx.fillRect(geo.x + geo.size + 6, geo.y - 6, app.W - geo.x - geo.size - 6, geo.size + 12);
+        ui.button({ id: 'cs-skip', x: 0, y: 0, w: app.W, h: app.H, silent: true, onDown: () => { fx.events = []; toPlayer(); } });
       }
     },
   };
@@ -2810,29 +3963,29 @@ module.exports = function (app) {
 
   app.scenes.welcome = {
     draw(ctx, t) {
-      const th = app.th, W = app.W;
-      let y = app.headerY + 70;
-      ui.text(ctx, '数独', W / 2, y, 40, th.text, 'center', 700);
-      ui.text(ctx, '每行、每列、每宫，1 到 9 各一个', W / 2, y + 42, 14, th.sub, 'center');
-      y += 110;
-      ui.text(ctx, '你玩过数独吗？', W / 2, y, 22, th.text, 'center', 700);
-      y += 34;
-      const h = 92;
+      const th = app.th, W = app.W, H = app.H, H0 = require('./config.js').HOME;
+      require('./homeart.js').draw(ctx, W, H, app.dpr);
+      ui.text(ctx, app.TITLE, W / 2, app.titleY, 44, H0.title, 'center', 800);
+      // 下半屏一块深色面板：「你玩过数独吗？」+ 三张卡（第一次打开才有）
+      const h = 84, gap = 10, panelH = 54 + 3 * (h + gap) + 30;
+      let y = Math.max(H * 0.5, app.bottom - panelH);
+      ctx.fillStyle = 'rgba(8,11,10,0.55)'; ctx.fillRect(0, y - 16, W, H - y + 16);
+      ui.text(ctx, '你玩过数独吗？', W / 2, y + 14, 20, H0.title, 'center', 700);
+      y += 40;
       CARDS.forEach((c, i) => {
-        const cy = y + i * (h + 14);
+        const cy = y + i * (h + gap);
         const on = ui.button({ id: 'wel-' + c.id, x: 20, y: cy, w: W - 40, h, onTap: () => choose(c.id) });
         ctx.save();
         if (on) { ctx.translate(W / 2, cy + h / 2); ctx.scale(0.98, 0.98); ctx.translate(-W / 2, -cy - h / 2); }
-        ui.card(ctx, 20, cy, W - 40, h, 20, th);
-        if (on) ui.fillRR(ctx, 20, cy, W - 40, h, 20, th.pageDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)');
-        ctx.beginPath(); ctx.arc(64, cy + h / 2, 24, 0, Math.PI * 2); ctx.fillStyle = th.soft; ctx.fill();
-        ui.icons[c.icon](ctx, 64, cy + h / 2, 26, th.primary);
-        ui.text(ctx, c.title, 104, cy + h / 2 - 13, 20, th.text, 'left', 700);
-        ui.text(ctx, c.sub, 104, cy + h / 2 + 15, 13, th.sub);
-        ui.icons.chevron(ctx, W - 44, cy + h / 2, 20, th.faint);
+        ui.fillRR(ctx, 20, cy, W - 40, h, 18, on ? 'rgba(38,80,83,0.92)' : 'rgba(20,28,27,0.9)');
+        ui.rr(ctx, 20, cy, W - 40, h, 18); ctx.strokeStyle = 'rgba(224,176,64,0.35)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.beginPath(); ctx.arc(62, cy + h / 2, 22, 0, Math.PI * 2); ctx.fillStyle = 'rgba(224,176,64,0.16)'; ctx.fill();
+        ui.icons[c.icon](ctx, 62, cy + h / 2, 24, H0.amber);
+        ui.text(ctx, c.title, 100, cy + h / 2 - 12, 19, H0.title, 'left', 700);
+        ui.text(ctx, c.sub, 100, cy + h / 2 + 14, 12, H0.sub);
+        ui.icons.chevron(ctx, W - 44, cy + h / 2, 20, H0.sub);
         ctx.restore();
       });
-      ui.text(ctx, '选完以后，在「教学」里随时能改', W / 2, app.bottom - 24, 12, th.faint, 'center');
     },
   };
 
@@ -2923,6 +4076,30 @@ const RECIPES = {
   correct: { len: 0.5, f: (t) => seq([880, 1319], 0.07, bell, 0.16)(t) * 0.35 },       // 教学里做对
 };
 
+
+// ---------- 0.7 过场用（照 主页与过场设计_Fable_1.0.md 2.10）----------
+// 大调音阶：铃阶 1–8 给「某个数 9 个填完」，第 9 个音留给通关和弦的根音
+const SCALE = [523, 587, 659, 698, 784, 880, 988, 1047, 1175];
+SCALE.forEach((f, i) => {
+  RECIPES['bell' + (i + 1)] = { len: 0.6, f: (t) => bell(f, t, 0.4) * 0.42 };
+  // 嗒阶：木块敲击，一次升一个音（通关波浪、七课连打）
+  RECIPES['tick' + (i + 1)] = { len: 0.14, f: (t) => noise() * env(t, 0.0008, 0.005) * 0.35 + mallet(f * 0.5, t, 0.05) * 0.45 };
+});
+Object.assign(RECIPES, {
+  // 灯亮：开关「咔」+ 0.3 秒往上滑的柔和正弦
+  lamp: { len: 0.5, f: (t) => noise() * env(t, 0.0005, 0.002) * 0.6 + Math.sin(2 * Math.PI * (300 * t + 700 * t * t)) * env(t, 0.02, 0.2) * 0.3 },
+  // 咚：约 70 赫兹的低鼓，开头叠一下木头「嗒」
+  dong: { len: 0.6, f: (t) => sin(70 + 30 * Math.exp(-t * 20), t) * env(t, 0.002, 0.25) * 0.7 + noise() * env(t, 0.0008, 0.006) * 0.3 + mallet(330, t, 0.04) * 0.2 },
+  // 嗖：滤过的噪声扫过去
+  whoosh: { len: 0.35, f: (t) => { let s = 0; for (let k = 0; k < 3; k++) s += noise(); return s * 0.12 * Math.sin(Math.PI * Math.min(1, t / 0.35)); } },
+  // 和弦：三个铃音叠成大三和弦（根音 = 音阶第 9 个音），不要鼓点
+  chord: { len: 1.2, f: (t) => (bell(1175, t, 0.9) + bell(1480, t, 0.9) + bell(1760, t, 0.9)) * 0.2 },
+  // 嗡起：0.6 秒由低到高的正弦，很小声
+  hum: { len: 0.7, f: (t) => Math.sin(2 * Math.PI * (110 * t + 260 * t * t)) * Math.sin(Math.PI * Math.min(1, t / 0.7)) * 0.18 },
+  // 轻嗒：结算页落定
+  soft: { len: 0.1, f: (t) => mallet(880, t, 0.03) * 0.25 },
+});
+
 function make(name, sr) {
   const r = RECIPES[name];
   if (!r) return null;
@@ -2955,11 +4132,11 @@ const data = Object.assign({
   lessons: {}, // 'rules': true
   themes: {},
   current: null, // 正在玩的那一局（board.js 的对象）
-  seen: { tutorial: false },
+  seen: { tutorial: false }, // 0.7 起还会记：open 开场看过、cutLesson、cutTier{}、clearTier{}
   next: [0, 0, 0, 0, 0, 0], // 每档下一题从题库第几题开始
 }, P.load(KEY) || {});
 // 老存档缺的字段补上（设置要逐项补，不然老存档会把新加的开关整个盖掉）
-const SETTINGS = { mistakeLimit: true, autoNotes: true, sameHighlight: true, showTimer: true, sound: true, vibrate: true, theme: 'paper', tileStyle: 'A' };
+const SETTINGS = { mistakeLimit: true, autoNotes: true, sameHighlight: true, showTimer: true, sound: true, vibrate: true, theme: 'paper', tileStyle: 'A', reduceMotion: false };
 data.settings = Object.assign({}, SETTINGS, data.settings || {});
 // 0.1 / 0.2 的老主题名换成新的；免费主题一定在
 const OLD_THEME = { morning: 'paper', night: 'chalk', mint: 'paper', apricot: 'paper', lilac: 'paper' };

@@ -76,6 +76,7 @@ module.exports = function (app) {
     ['mistakeLimit', '错 3 次算输', '关掉就不限次数'],
     ['autoNotes', '自动擦笔记', '填对一个数，同行同列同宫的这个笔记擦掉'],
     ['sameHighlight', '高亮相同数字', ''],
+    ['reduceMotion', '简洁动效', '过场只播短的，不震屏、不闪'],
     ['showTimer', '显示计时', ''],
     ['sound', '声音', ''],
     ['vibrate', '震动', ''],

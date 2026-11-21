@@ -1,6 +1,6 @@
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.6.1';
+const VERSION = '0.7';
 
 // 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
 // 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
@@ -92,4 +92,15 @@ const ADS = {
 // 每日挑战：星期几出哪一档（0 = 星期日）
 const DAILY_TIER = [3, 1, 1, 2, 2, 3, 2];
 
-module.exports = { VERSION, THEMES, SCORE, speedMultiplier, RULES, ADS, DAILY_TIER };
+// 过场和主页（0.7，照 主页与过场设计_Fable_1.0.md）。帧数都是 60 帧每秒，还没上真机校，调手感只改这里
+const CUT = {
+  digit: { hold: 5, strike: 3, hit: 18, holdShort: 3, hitShort: 10, scale: 1.18 },   // 某个数 9 个填完（局内，不盖屏）
+  win: { freeze: 24, ring: 6, hold: 45, freezeShort: 10, poseShort: 36 },             // 通关第一段（棋盘上）
+  flashMax: 0.7, flashChalk: 0.5,
+};
+// 主页图：Midjourney 的图到了以后填 src，并量出「亮的那一块」在图上的中心和边长（占图宽的比例）
+const HOME_ART = { src: '', lit: null };
+// 主页的颜色跟着主页图走，不跟主题走
+const HOME = { title: '#F3EAD2', button: '#E0B040', buttonText: '#141A17', sub: 'rgba(243,234,210,0.72)', amber: '#E0B040' };
+
+module.exports = { CUT, HOME_ART, HOME, VERSION, THEMES, SCORE, speedMultiplier, RULES, ADS, DAILY_TIER };

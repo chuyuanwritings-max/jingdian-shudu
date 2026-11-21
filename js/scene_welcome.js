@@ -32,29 +32,29 @@ module.exports = function (app) {
 
   app.scenes.welcome = {
     draw(ctx, t) {
-      const th = app.th, W = app.W;
-      let y = app.headerY + 70;
-      ui.text(ctx, '数独', W / 2, y, 40, th.text, 'center', 700);
-      ui.text(ctx, '每行、每列、每宫，1 到 9 各一个', W / 2, y + 42, 14, th.sub, 'center');
-      y += 110;
-      ui.text(ctx, '你玩过数独吗？', W / 2, y, 22, th.text, 'center', 700);
-      y += 34;
-      const h = 92;
+      const th = app.th, W = app.W, H = app.H, H0 = require('./config.js').HOME;
+      require('./homeart.js').draw(ctx, W, H, app.dpr);
+      ui.text(ctx, app.TITLE, W / 2, app.titleY, 44, H0.title, 'center', 800);
+      // 下半屏一块深色面板：「你玩过数独吗？」+ 三张卡（第一次打开才有）
+      const h = 84, gap = 10, panelH = 54 + 3 * (h + gap) + 30;
+      let y = Math.max(H * 0.5, app.bottom - panelH);
+      ctx.fillStyle = 'rgba(8,11,10,0.55)'; ctx.fillRect(0, y - 16, W, H - y + 16);
+      ui.text(ctx, '你玩过数独吗？', W / 2, y + 14, 20, H0.title, 'center', 700);
+      y += 40;
       CARDS.forEach((c, i) => {
-        const cy = y + i * (h + 14);
+        const cy = y + i * (h + gap);
         const on = ui.button({ id: 'wel-' + c.id, x: 20, y: cy, w: W - 40, h, onTap: () => choose(c.id) });
         ctx.save();
         if (on) { ctx.translate(W / 2, cy + h / 2); ctx.scale(0.98, 0.98); ctx.translate(-W / 2, -cy - h / 2); }
-        ui.card(ctx, 20, cy, W - 40, h, 20, th);
-        if (on) ui.fillRR(ctx, 20, cy, W - 40, h, 20, th.pageDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)');
-        ctx.beginPath(); ctx.arc(64, cy + h / 2, 24, 0, Math.PI * 2); ctx.fillStyle = th.soft; ctx.fill();
-        ui.icons[c.icon](ctx, 64, cy + h / 2, 26, th.primary);
-        ui.text(ctx, c.title, 104, cy + h / 2 - 13, 20, th.text, 'left', 700);
-        ui.text(ctx, c.sub, 104, cy + h / 2 + 15, 13, th.sub);
-        ui.icons.chevron(ctx, W - 44, cy + h / 2, 20, th.faint);
+        ui.fillRR(ctx, 20, cy, W - 40, h, 18, on ? 'rgba(38,80,83,0.92)' : 'rgba(20,28,27,0.9)');
+        ui.rr(ctx, 20, cy, W - 40, h, 18); ctx.strokeStyle = 'rgba(224,176,64,0.35)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.beginPath(); ctx.arc(62, cy + h / 2, 22, 0, Math.PI * 2); ctx.fillStyle = 'rgba(224,176,64,0.16)'; ctx.fill();
+        ui.icons[c.icon](ctx, 62, cy + h / 2, 24, H0.amber);
+        ui.text(ctx, c.title, 100, cy + h / 2 - 12, 19, H0.title, 'left', 700);
+        ui.text(ctx, c.sub, 100, cy + h / 2 + 14, 12, H0.sub);
+        ui.icons.chevron(ctx, W - 44, cy + h / 2, 20, H0.sub);
         ctx.restore();
       });
-      ui.text(ctx, '选完以后，在「教学」里随时能改', W / 2, app.bottom - 24, 12, th.faint, 'center');
     },
   };
 

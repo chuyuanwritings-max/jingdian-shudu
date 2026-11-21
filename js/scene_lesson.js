@@ -110,12 +110,31 @@ module.exports = function (app) {
     lesson.totalMisses += lesson.misses;
     if (lesson.si + 1 < lesson.steps.length) { lesson.si++; loadStep(); app.animate(300); return; }
     if (lesson.quiz) { app.quizDone(lesson.totalMisses); return; }
-    // 学完
+    // 学完：先入账，再播过场（主页与过场设计 2.4、2.5），播完弹「下一课」
     const L0 = T.LESSONS[lesson.index];
+    const relearn = !!store.data.lessons[L0.id];
     store.data.lessons[L0.id] = true;
+    const seen = store.data.seen;
+    const allNow = T.LESSONS.every((x) => store.data.lessons[x.id]);
     store.save();
-    app.sound('win');
-    finished();
+    if (lesson.then && lesson.then.tier !== undefined) {
+      // 升档学新招：第一次升档、升到大师播完整版，其余短版
+      const tier = lesson.then.tier;
+      const full = !seen.cutTierAny || tier === 5;
+      seen.cutTierAny = true; store.save();
+      app.cutTier(tier, L0.name, { short: !full, onEnd: finished });
+    } else if (allNow && !seen.allSeven) {
+      // 七招全会：一辈子一次
+      seen.allSeven = true; store.save();
+      app.cutLesson(lesson.index, L0.name, { all: true, onEnd: finished });
+    } else if (relearn) {
+      app.sound('correct');
+      finished(); // 重学一门学过的：不播
+    } else {
+      const full = lesson.index === 0 && !seen.cutLesson0;
+      if (lesson.index === 0) { seen.cutLesson0 = true; store.save(); }
+      app.cutLesson(lesson.index, L0.name, { short: !full, onEnd: finished });
+    }
   }
   function finished() {
     const i = lesson.index, ret = lesson.returnTo;

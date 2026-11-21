@@ -10,18 +10,29 @@ module.exports = function (app) {
   // ---------- 结算 ----------
   let res = null;
   app.scenes.result = {
-    enter(args) { res = { b: args.board, t0: P.now() }; },
+    enter(args) {
+      res = { b: args.board, t0: P.now(), fromCut: !!args.fromCut };
+      // 从通关过场硬切过来：页面安静，一声很轻的「嗒」，按钮晚 20 帧再出来（反差回落）
+      if (res.fromCut) { app.sound('soft'); res.icon = app.cutTileImg(56, { body: '#E9C25A', edge: '#A9832A', ink: '#3A2A08' }, { check: true, bars: res.b.tier + 1 }); }
+    },
     live: (t) => t - res.t0 < 1200,
+    ready: () => !res.fromCut || P.now() - res.t0 > 330,
     draw(ctx, t) {
       const th = app.th, W = app.W, b = res.b;
       const p = Math.min(1, (t - res.t0) / 900);
       let y = app.headerY + 30;
-      // 勾：圆从小弹到大
-      const s = ui.ease.back(Math.min(1, (t - res.t0) / 450));
-      ctx.save(); ctx.translate(W / 2, y + 36); ctx.scale(s, s);
-      ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2); ctx.fillStyle = th.ok; ctx.fill();
-      ui.icons.check(ctx, 0, 0, 40, '#FFFFFF', 4);
-      ctx.restore();
+      if (res.icon) {
+        // 过场里那块金方块缩在页面顶上
+        const iw = res.icon.width / app.dpr, ih = res.icon.height / app.dpr;
+        ctx.drawImage(res.icon, 0, 0, res.icon.width, res.icon.height, W / 2 - iw / 2, y + 36 - ih / 2, iw, ih);
+      } else {
+        // 勾：圆从小弹到大
+        const s = ui.ease.back(Math.min(1, (t - res.t0) / 450));
+        ctx.save(); ctx.translate(W / 2, y + 36); ctx.scale(s, s);
+        ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2); ctx.fillStyle = th.ok; ctx.fill();
+        ui.icons.check(ctx, 0, 0, 40, '#FFFFFF', 4);
+        ctx.restore();
+      }
       y += 96;
       const tierName = S.TIERS[b.tier].name;
       const half = (W - 32 - 10) / 2;
@@ -41,6 +52,7 @@ module.exports = function (app) {
           ui.text(ctx, mis ? '错 ' + mis + ' 次' : '一次没错', x + cw / 2, y + 104, 13, th.sub, 'center');
         });
         y += chh + 22;
+        if (!app.scenes.result.ready()) { app.animate(400); return; } // 按钮晚 20 帧
         ui.pill(ctx, th, 'res-reply', 16, y, W - 32, 54, r.win ? '发回去，让他再来' : '发回去挑战他', () => app.shareChallenge(b, true), 'primary');
         y += 64;
         ui.pill(ctx, th, 'res-again', 16, y, half, 50, '再来一局', () => app.startGame(b.tier), 'card');
@@ -51,7 +63,7 @@ module.exports = function (app) {
       ui.text(ctx, (b.mode === 'daily' ? '每日挑战 · ' + b.date.slice(5).replace('-', '月') + '日 · ' : '') + tierName, W / 2, y + 34, 14, th.sub, 'center');
       y += 70;
       // 分数滚上去
-      const shown = Math.round(b.score * ui.ease.out(p));
+      const shown = res.fromCut ? b.score : Math.round(b.score * ui.ease.out(p));
       ui.text(ctx, String(shown), W / 2, y + 20, 44, th.primary, 'center', 700);
       ui.text(ctx, b.newBestScore ? '本档最高分！' : '分', W / 2, y + 56, 13, b.newBestScore ? th.gold : th.sub, 'center', 600);
       y += 80;
@@ -69,6 +81,7 @@ module.exports = function (app) {
       });
       y += rows.length * rh + 10 + 18;
       // 按钮：发给朋友挑战这一题（主按钮）；再来一局 / 回首页并排
+      if (!app.scenes.result.ready()) { app.animate(400); return; } // 按钮晚 20 帧
       ui.pill(ctx, th, 'res-share', 16, y, W - 32, 54, '发给朋友挑战这一题', () => app.shareChallenge(b), 'primary');
       y += 64;
       if (b.mode === 'daily') ui.pill(ctx, th, 'res-cal', 16, y, half, 50, '回日历', () => app.go('daily'), 'card');

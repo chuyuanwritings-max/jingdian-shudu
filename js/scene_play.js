@@ -22,7 +22,7 @@ module.exports = function (app) {
   let L = null; // 布局
   let hintBelow = true;
 
-  const resetFx = () => { fx = { pops: {}, rings: [], flash: [], shake: null, floats: [], hops: {}, keyDone: {}, confetti: [] }; };
+  const resetFx = () => { fx = { pops: {}, rings: [], flash: [], shake: null, floats: [], hops: {}, keyDone: {}, events: [], gold: {}, sparks: [], digit: null, boardShake: null }; };
   let party = null; // 通关庆祝：{ t0, k }
 
   function layout() {
@@ -61,6 +61,7 @@ module.exports = function (app) {
       store.data.next[tier] = (idx + 1) % half;
     }
     store.startGame(tier, mode);
+    if (mode === 'normal' && !opts.guided) store.data.lastTier = tier;
     const nb = Board.create({ mode, tier, idx, date: opts.date, puzzle: bank[tier][idx], guided: opts.guided });
     store.data.current = nb;
     store.save();
@@ -122,6 +123,7 @@ module.exports = function (app) {
     if (r.gain) fx.floats.push({ k, t0: t + 120, text: '+' + r.gain });
     app.sound('tile');
     // 填满一行 / 列 / 宫：从这一格往两边一格格跳一下、亮一下（等方块落稳再开始）
+    const land = t + 150; // 方块落地的那一刻
     r.units.forEach((u) => {
       S.UNITS[u].forEach((x) => {
         const d = Math.abs(S.ROW(x) - S.ROW(k)) + Math.abs(S.COL(x) - S.COL(k));
@@ -129,90 +131,150 @@ module.exports = function (app) {
         if (x !== k) fx.hops[x] = t + 220 + d * 45;
       });
     });
-    if (r.units.length && !r.win) { setTimeout(() => app.sound('unit'), 220); setTimeout(() => app.buzz('medium'), 220); }
-    if (r.digitDone && !r.win) {
-      for (let x = 0; x < 81; x++) if (b.vals[x] === v) { fx.flash.push({ k: x, t0: t + 300, dur: 600, color: app.th.gold, alpha: 0.4 }); fx.hops[x] = t + 300; }
-      fx.keyDone[v] = t + 300;
-      setTimeout(() => app.sound('digit'), 300);
-    }
+    // 同一步撞在一起：只响一个声音、只震一次。优先级：通关 > 数字填完 > 行列宫
+    if (r.units.length && !r.win && !r.digitDone) later(220, () => { app.sound('unit'); app.buzz('medium'); });
+    if (r.digitDone && !r.win) digitBurst(v, land);
     app.animate(1200);
     if (r.win) onWin(t);
   }
-  // 通关：从最后一格往外一圈圈波浪点亮、每格跳一下 → 两门彩纸炮 + 顶上撒彩纸 → 「完成！」→ 结算。约 2.8 秒，点一下跳过
-  const PARTY_MS = 2800;
+
+  // ---------- 按时间排的小事件（代替到处 setTimeout：同一时刻的事在同一帧里做）----------
+  function later(ms, fn) { fx.events.push({ at: P.now() + ms, fn }); }
+  function runEvents(t) {
+    if (!fx.events.length) return;
+    const due = fx.events.filter((e) => e.at <= t);
+    if (!due.length) return;
+    fx.events = fx.events.filter((e) => e.at > t);
+    due.forEach((e) => e.fn(t));
+  }
+
+  // ---------- 某个数 9 个都填完：原地「顿一下再爆」（0.43 秒，不盖屏、不锁输入）----------
+  // 顿（9 块硬切成金面）→ 出手（9 块同时放大 1.18，不缓动）→ 命中（各一层白光、弹回、金线串起、键上打勾、火星、棋盘轻抖、铃音）
+  function digitBurst(v, land) {
+    const D = C.CUT.digit, F = 1000 / 60;
+    b.digitCount = (b.digitCount || 0) + 1;
+    const full = b.digitCount === 1 && !store.data.settings.reduceMotion;
+    const hold = (full ? D.hold : D.holdShort) * F, hit = (full ? D.hit : D.hitShort) * F;
+    const cells = [];
+    for (let x = 0; x < 81; x++) if (b.vals[x] === v) cells.push(x);
+    const tS = land + hold, tH = tS + D.strike * F, tEnd = tH + hit;
+    cells.forEach((x) => { fx.gold[x] = [land, tEnd]; });
+    fx.digit = { cells, tS, tH, tEnd, full };
+    later(tH - P.now(), (t) => {
+      cells.forEach((x) => fx.flash.push({ k: x, t0: t, dur: 12 * F, color: '#FFFFFF', alpha: 0.6 }));
+      cells.forEach((x) => sparkAt(x, full ? 3 : 2));
+      if (full) fx.boardShake = { t0: t, dur: 6 * F, amp: 2 };
+      app.sound('bell' + Math.min(8, b.digitCount));
+      app.buzz('medium');
+    });
+    fx.keyDone[v] = tS;
+    app.animate(tEnd - P.now() + 100);
+  }
+  // 单格缩放：数字填完的「出手」放大 → 弹回；通关长停时整盘呼吸
+  function cellScale(k, t) {
+    const d = fx.digit;
+    if (d && t >= d.tS && t < d.tEnd && d.cells.indexOf(k) >= 0) {
+      if (t < d.tH) return C.CUT.digit.scale;
+      const p = Math.min(1, (t - d.tH) / (10 * 1000 / 60));
+      return C.CUT.digit.scale - (C.CUT.digit.scale - 1) * ui.ease.back(p);
+    }
+    if (party && party.breathFrom && t >= party.breathFrom) return 1 + 0.02 * Math.sin(Math.min(1, (t - party.breathFrom) / 750) * Math.PI);
+    return 1;
+  }
+  function sparkAt(k, n) {
+    const r = DB.cellRect(geo, k);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 60 + Math.random() * 120;
+      fx.sparks.push({ x: r.x + r.s / 2, y: r.y + r.s / 2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60, life: 0, max: 300 + Math.random() * 300 });
+    }
+  }
+  function stepSparks(dt) {
+    const s = dt / 1000;
+    fx.sparks.forEach((p) => { p.vy += 500 * s; p.x += p.vx * s; p.y += p.vy * s; p.life += dt; });
+    fx.sparks = fx.sparks.filter((p) => p.life < p.max);
+  }
+  function drawSparks(ctx) {
+    for (const p of fx.sparks) {
+      ctx.globalAlpha = Math.max(0, 1 - p.life / p.max);
+      ctx.strokeStyle = '#FFC24A'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * 0.03, p.y - p.vy * 0.03); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  // 金线：8 帧一笔把 9 块串起来，再 10 帧淡掉（只有每局第一次）
+  function drawGoldLine(ctx, t) {
+    const d = fx.digit, F = 1000 / 60;
+    if (!d || !d.full || t < d.tH || t > d.tH + 18 * F) return;
+    const p = (t - d.tH) / (8 * F), fade = Math.max(0, 1 - (t - d.tH - 8 * F) / (10 * F));
+    const pts = d.cells.map((k) => { const r = DB.cellRect(geo, k); return [r.x + r.s / 2, r.y + r.s / 2]; });
+    const n = Math.min(pts.length, Math.max(1, Math.ceil(p * pts.length)));
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, fade);
+    ctx.strokeStyle = '#F5C531'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); pts.slice(0, n).forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+    ctx.restore();
+  }
+
+  // ---------- 通关：第一段在棋盘上，第二段交给过场播放器 ----------
+  // 顿（棋盘以外硬切成近黑、计时停、重震）→ 金色从最后一格一圈圈漫满（每圈一声嗒，越来越高）→ 81 格全金长停呼吸
+  // → 截下棋盘 → 播放器：整盘压扁收成一块金方块「咚」→ 光阵底「完成！」→ 硬切到安静的结算页
   function onWin(t) {
     winAt = t;
-    const last = b.selected;
+    const last = b.selected >= 0 ? b.selected : 40;
     b.selected = -1;
+    hint = null;
+    // 奖励先入账，再播
+    const firstEver = !store.data.seen.firstClear;
+    const firstTier = !(store.data.seen.clearTier || {})[b.tier];
     store.recordWin(b);
-    party = { t0: t, k: last };
-    for (let x = 0; x < 81; x++) {
-      const d = Math.hypot(S.ROW(x) - S.ROW(last), S.COL(x) - S.COL(last));
-      fx.flash.push({ k: x, t0: t + 250 + d * 70, dur: 520, alpha: 0.65 });
-      fx.hops[x] = t + 250 + d * 70;
+    store.data.seen.firstClear = true;
+    store.data.seen.clearTier = Object.assign({}, store.data.seen.clearTier, { [b.tier]: true });
+    store.save();
+    const won = b.mode === 'challenge' && app.challengeResult(b).win;
+    const full = !store.data.settings.reduceMotion && (firstEver || firstTier || b.mode === 'daily' || b.newBest || won);
+    const tn = S.TIERS[b.tier].name;
+    const head = b.mode === 'daily' ? '今日完成' : won ? '你赢了' : b.newBest && !firstTier ? '新纪录 ' + app.fmt(b.elapsed) : firstTier ? '首次通关 · ' + tn : '完成！';
+    const WIN = C.CUT.win, F = 1000 / 60;
+    party = { t0: t, last, full, head, sub: app.fmt(b.elapsed) + ' · ' + b.score + ' 分' };
+    app.buzz('heavy');
+    const land = t + 150;
+    if (full) {
+      // 波浪：按「隔几格」算（切比雪夫距离），每圈 6 帧
+      let maxD = 0;
+      for (let x = 0; x < 81; x++) {
+        const d = Math.max(Math.abs(S.ROW(x) - S.ROW(last)), Math.abs(S.COL(x) - S.COL(last)));
+        maxD = Math.max(maxD, d);
+        const at = land + WIN.freeze * F + d * WIN.ring * F;
+        fx.gold[x] = [at, Infinity];
+        fx.hops[x] = at;
+      }
+      for (let d = 0; d <= maxD; d++) later(land + WIN.freeze * F + d * WIN.ring * F - P.now(), () => app.sound('tick' + Math.min(9, d + 1)));
+      const holdFrom = land + WIN.freeze * F + (maxD + 1) * WIN.ring * F + 300;
+      party.breathFrom = holdFrom;
+      later(holdFrom + WIN.hold * F - P.now(), () => toPlayer());
+    } else {
+      later(land + WIN.freezeShort * F - P.now(), () => toPlayer());
     }
-    setTimeout(() => { app.sound('fanfare'); app.buzz('heavy'); }, 250);
-    setTimeout(() => { if (party) { burst(); app.sound('confetti'); app.buzz('medium'); } }, 750);
-    setTimeout(() => endParty(), PARTY_MS);
+    app.animate(6000);
+  }
+  function toPlayer() {
+    if (!party || party.playing) return;
+    party.playing = true;
+    // 截下棋盘（和真棋盘同样大小、同样位置，接得上）
+    const d = app.dpr, pad = 6;
+    const shot = P.makeCanvas(Math.round((geo.size + pad * 2) * d), Math.round((geo.size + pad * 2) * d));
+    const g = shot.getContext('2d');
+    g.setTransform(d, 0, 0, d, 0, 0);
+    DB.draw(g, app.th, { x: pad, y: pad, size: geo.size }, {
+      vals: b.vals, given: b.given, notes: b.notes, wrong: () => false, selected: -1, gold: fx.gold, now: P.now() + 99999, tileStyle: store.data.settings.tileStyle,
+    }, d);
+    const sgeo = { x: geo.x - pad, y: geo.y - pad, size: geo.size + pad * 2 };
+    app.cutWin(shot, sgeo, b.tier, party.head, party.sub, { short: !party.full, onEnd: endParty });
   }
   function endParty() {
     if (!party) return;
     party = null;
-    app.go('result', { board: b });
-  }
-  // 彩纸：左下、右下两门炮往上斜着打，再从顶上飘一阵
-  function burst() {
-    const th = app.th, W = app.W;
-    const colors = [th.primary, th.gold, th.ok, th.wrong, th.glow, (th.tileB || [th.user])[0]];
-    const rnd = Math.random;
-    const add = (x, y, vx, vy) => fx.confetti.push({ x, y, vx, vy, rot: rnd() * 6, vr: (rnd() - 0.5) * 14, w: 5 + rnd() * 5, h: 8 + rnd() * 6, c: colors[(rnd() * colors.length) | 0], ph: rnd() * 6, round: rnd() < 0.25 });
-    for (let i = 0; i < 70; i++) {
-      const sp = 650 + rnd() * 550, a = (-62 - rnd() * 22) * Math.PI / 180;
-      add(-10, app.H * 0.78, Math.cos(a) * sp, Math.sin(a) * sp);
-      add(W + 10, app.H * 0.78, -Math.cos(a) * sp, Math.sin(a) * sp);
-    }
-    for (let i = 0; i < 50; i++) add(rnd() * W, -20 - rnd() * 200, (rnd() - 0.5) * 80, 60 + rnd() * 120);
-  }
-  function stepConfetti(dt) {
-    const s = dt / 1000;
-    for (const p of fx.confetti) {
-      p.vy += 900 * s;
-      p.vx *= Math.pow(0.35, s);
-      p.vy *= Math.pow(0.55, s);
-      p.x += (p.vx + Math.sin(p.ph + p.y / 40) * 30) * s;
-      p.y += p.vy * s;
-      p.rot += p.vr * s;
-    }
-    fx.confetti = fx.confetti.filter((p) => p.y < app.H + 40);
-  }
-  function drawParty(ctx, th, t) {
-    for (const p of fx.confetti) {
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.rot);
-      ctx.scale(1, Math.abs(Math.cos(p.rot * 1.3)) * 0.8 + 0.2); // 翻转时变窄，像纸片在转
-      ctx.fillStyle = p.c;
-      if (p.round) { ctx.beginPath(); ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2); ctx.fill(); }
-      else ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-      ctx.restore();
-    }
-    // 「完成！」大字：0.9 秒时弹出来
-    const e = t - party.t0 - 900;
-    if (e > 0) {
-      const p = Math.min(1, e / 380);
-      const s = ui.ease.back(p);
-      const cy = geo.y + geo.size / 2;
-      ctx.save();
-      ctx.globalAlpha = Math.min(1, p * 1.5);
-      ctx.translate(app.W / 2, cy);
-      ctx.scale(s, s);
-      ui.fillRR(ctx, -110, -46, 220, 92, 28, th.card);
-      ui.rr(ctx, -110, -46, 220, 92, 28); ctx.strokeStyle = th.gold; ctx.lineWidth = 3; ctx.stroke();
-      ui.text(ctx, '完成！', 0, -6, 38, th.text, 'center', 800);
-      ui.text(ctx, app.fmt(b.elapsed) + ' · ' + b.score + ' 分', 0, 28, 14, th.sub, 'center', 600);
-      ctx.restore();
-    }
-    ui.text(ctx, '点一下继续', app.W / 2, app.bottom - 22, 12, th.sub, 'center');
+    app.go('result', { board: b, fromCut: true });
   }
   function showLost() {
     app.sound('lose');
@@ -389,7 +451,7 @@ module.exports = function (app) {
     leave() { persist(); },
     onHide() { if (b && !b.done && !winAt) { paused = true; persist(); app.redraw(); } },
     update(dt, t) {
-      if (fx && fx.confetti.length) stepConfetti(dt);
+      if (fx) { runEvents(t); if (fx.sparks.length) stepSparks(dt); }
       if (!b || paused || winAt || b.lost || app.overlays.length) return;
       b.elapsed += dt;
       const sec = Math.floor(b.elapsed / 1000);
@@ -397,7 +459,7 @@ module.exports = function (app) {
       saveTimer += dt;
       if (saveTimer > 3000) { saveTimer = 0; persist(); }
     },
-    live: (t) => !!party || (!!hint && t - hint.t0 < 400) || (!!b && b.guided && b.guideLeft > 0),
+    live: (t) => !!party || (!!hint && t - hint.t0 < 400) || (!!b && b.guided && b.guideLeft > 0) || (!!fx && (fx.sparks.length > 0 || fx.events.length > 0)),
     draw(ctx, t) {
       const th = app.th;
       const tierName = S.TIERS[b.tier].name;
@@ -412,12 +474,21 @@ module.exports = function (app) {
 
       // 棋盘（按下就选中）
       ui.button({ id: 'board', x: geo.x, y: geo.y, w: geo.size, h: geo.size, silent: true, onDown: (x, y) => select(DB.cellAt(geo, x, y)) });
-      DB.draw(ctx, th, geo, {
+      // 数字填完时棋盘轻抖（只抖棋盘）
+      let bgeo = geo;
+      if (fx.boardShake && t - fx.boardShake.t0 < fx.boardShake.dur) {
+        const k2 = 1 - (t - fx.boardShake.t0) / fx.boardShake.dur;
+        bgeo = { x: geo.x + (Math.random() - 0.5) * 2 * fx.boardShake.amp * k2, y: geo.y + (Math.random() - 0.5) * 2 * fx.boardShake.amp * k2, size: geo.size };
+      }
+      DB.draw(ctx, th, bgeo, {
+        gold: fx.gold, cellScale,
         vals: b.vals, given: b.given, notes: b.notes, wrong: (k) => Board.isWrong(b, k),
         selected: b.selected, selDigit, sameHighlight: store.data.settings.sameHighlight,
         hintCells: hint ? hint.cells : guide && b.guideLeft > 0 ? guide.cells : null,
         pops: fx.pops, rings: fx.rings, flash: fx.flash, shake: fx.shake, hops: fx.hops, now: t, tileStyle: store.data.settings.tileStyle,
       }, app.dpr);
+      drawGoldLine(ctx, t);
+      drawSparks(ctx);
       if (paused) {
         ui.fillRR(ctx, geo.x, geo.y, geo.size, geo.size, 10, th.board);
         ui.text(ctx, '已暂停', app.W / 2, geo.y + geo.size / 2 - 30, 20, th.text, 'center', 600);
@@ -445,9 +516,12 @@ module.exports = function (app) {
       app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone, active: selDigit });
       if (hint) drawHintCard(ctx, th, t);
       else if (b.guided && b.guideLeft > 0 && !winAt && !paused) drawGuide(ctx, th, t);
-      if (party) {
-        drawParty(ctx, th, t);
-        ui.button({ id: 'party-skip', x: 0, y: 0, w: app.W, h: app.H, onTap: endParty }); // 点一下跳过
+      // 通关第一段：棋盘以外硬切成近黑（点一下直接进第二段）
+      if (party && !party.playing) {
+        ctx.fillStyle = '#0E0E0E';
+        ctx.fillRect(0, 0, app.W, geo.y - 6); ctx.fillRect(0, geo.y + geo.size + 6, app.W, app.H - geo.y - geo.size - 6);
+        ctx.fillRect(0, geo.y - 6, geo.x - 6, geo.size + 12); ctx.fillRect(geo.x + geo.size + 6, geo.y - 6, app.W - geo.x - geo.size - 6, geo.size + 12);
+        ui.button({ id: 'cs-skip', x: 0, y: 0, w: app.W, h: app.H, silent: true, onDown: () => { fx.events = []; toPlayer(); } });
       }
     },
   };
