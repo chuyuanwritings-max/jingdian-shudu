@@ -7,6 +7,8 @@ const ui = require('./ui.js');
 const P = require('./platform.js');
 const Paper = require('./paper.js');
 
+const YELLOW = '#F5C531', YELLOW_EDGE = '#E0A815';
+
 let cache = null; // 宫线、格线画在离屏画布上，每帧贴一次
 // 手写纸：一条线拆成很多小段，每段轻轻抖一下，粗细也不匀
 function handLine(g, x1, y1, x2, y2, w, seed) {
@@ -111,7 +113,11 @@ function tile(ctx, th, m, cx, cy, cs, v, wrong, p0, t, same) {
   ui.fillRR(ctx, cx + inset, cy + inset + thick, w, h, 6, edge);
   ui.fillRR(ctx, cx + inset, cy + inset, w, h, 6, body);
   ui.fillRR(ctx, cx + inset + 3, cy + inset + 1.5, w - 6, Math.max(1.5, cs * 0.045), 1, style === 'B' || th.boardDark ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.85)');
-  if (same) { ui.rr(ctx, cx + inset - 1, cy + inset - 1, w + 2, h + thick + 2, 7); ctx.strokeStyle = th.primary; ctx.lineWidth = 2; ctx.stroke(); }
+  if (same) {
+    // 和点中的数字一样：方块整块染一层黄，再描一圈黄边
+    ui.fillRR(ctx, cx + inset, cy + inset, w, h, 6, Paper.rgba(YELLOW, 0.38));
+    ui.rr(ctx, cx + inset - 1, cy + inset - 1, w + 2, h + thick + 2, 7); ctx.strokeStyle = YELLOW_EDGE; ctx.lineWidth = 2.5; ctx.stroke();
+  }
   ui.text(ctx, String(v), x0, cy + inset + h / 2 + 1, Math.round(cs * 0.54), ink, 'center', style === 'B' ? 600 : 500);
   ctx.restore();
 }
@@ -131,7 +137,8 @@ function draw(ctx, th, geo, m, dpr) {
   Paper.fill(ctx, th.boardTexture, dpr, !!th.boardDark, geo.x, geo.y, geo.size, geo.size);
   // 高亮用主色的半透明，纸色和质地都透得出来
   const dk = !!th.boardDark;
-  const HL = { rel: Paper.rgba(th.primary, dk ? 0.12 : 0.1), same: Paper.rgba(th.primary, dk ? 0.24 : 0.19), sel: Paper.rgba(th.primary, dk ? 0.36 : 0.3), hint: Paper.rgba(th.gold, 0.22) };
+  // 相同数字亮黄色（Cc 0.6.1，学 Sudoku 2）；笔记里有这个数的格子淡一点的黄
+  const HL = { rel: Paper.rgba(th.primary, dk ? 0.12 : 0.1), same: Paper.rgba(YELLOW, dk ? 0.42 : 0.5), noteSame: Paper.rgba(YELLOW, dk ? 0.26 : 0.3), sel: Paper.rgba(th.primary, dk ? 0.36 : 0.3), hint: Paper.rgba(th.gold, 0.22) };
 
   // 高亮：同行同列同宫（浅）→ 相同数字（中）→ 选中格（深）
   const sel = m.selected;
@@ -140,7 +147,10 @@ function draw(ctx, th, geo, m, dpr) {
   for (let k = 0; k < 81; k++) {
     let bg = null;
     if (sel >= 0 && k !== sel && (S.ROW(k) === S.ROW(sel) || S.COL(k) === S.COL(sel) || S.BOX(k) === S.BOX(sel))) bg = HL.rel;
-    if (m.sameHighlight !== false && digit && m.vals[k] === digit && k !== sel) bg = HL.same;
+    if (m.sameHighlight !== false && digit && k !== sel) {
+      if (m.vals[k] === digit) bg = HL.same;
+      else if (!m.vals[k] && m.notes && m.notes[k] & S.bit(digit)) bg = HL.noteSame;
+    }
     if (m.hintCells && m.hintCells.indexOf(k) >= 0) bg = HL.hint;
     if (k === sel) bg = HL.sel;
     if (bg) {

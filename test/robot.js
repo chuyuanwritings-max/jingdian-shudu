@@ -179,6 +179,11 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await shot('16_笔记');
   b = await G.board();
   ok(b.notes[e1] !== 0, '笔记记上了');
+  // 学 Sudoku 2：点数字键 → 所有这个数 + 笔记里有它的格子亮黄
+  await ev(() => { window.__app.testHooks.board().selected = -1; window.__app.redraw(); });
+  await click(await G.pad(v1), 200);
+  ok((await ev(() => window.__app.testHooks.selDigit())) === v1, '没选格子时点数字：只让这个数亮起来，不填');
+  await shot('16b_点数字_同数和笔记格亮黄');
   await click(await G.tool(2), 80);
   // 在同一行别的格填 v1 的那个格子……直接填 e1 本身：笔记被替换
   // 撤销：先填对一格，再撤销

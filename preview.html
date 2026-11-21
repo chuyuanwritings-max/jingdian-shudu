@@ -174,7 +174,7 @@ module.exports = { create, input, erase, undo, findHint, fillHint, revive, count
 __def("js/config.js", function (module, exports, require) {
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.6';
+const VERSION = '0.6.1';
 
 // 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
 // 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
@@ -278,6 +278,8 @@ const S = require('./sudoku.js');
 const ui = require('./ui.js');
 const P = require('./platform.js');
 const Paper = require('./paper.js');
+
+const YELLOW = '#F5C531', YELLOW_EDGE = '#E0A815';
 
 let cache = null; // 宫线、格线画在离屏画布上，每帧贴一次
 // 手写纸：一条线拆成很多小段，每段轻轻抖一下，粗细也不匀
@@ -383,7 +385,11 @@ function tile(ctx, th, m, cx, cy, cs, v, wrong, p0, t, same) {
   ui.fillRR(ctx, cx + inset, cy + inset + thick, w, h, 6, edge);
   ui.fillRR(ctx, cx + inset, cy + inset, w, h, 6, body);
   ui.fillRR(ctx, cx + inset + 3, cy + inset + 1.5, w - 6, Math.max(1.5, cs * 0.045), 1, style === 'B' || th.boardDark ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.85)');
-  if (same) { ui.rr(ctx, cx + inset - 1, cy + inset - 1, w + 2, h + thick + 2, 7); ctx.strokeStyle = th.primary; ctx.lineWidth = 2; ctx.stroke(); }
+  if (same) {
+    // 和点中的数字一样：方块整块染一层黄，再描一圈黄边
+    ui.fillRR(ctx, cx + inset, cy + inset, w, h, 6, Paper.rgba(YELLOW, 0.38));
+    ui.rr(ctx, cx + inset - 1, cy + inset - 1, w + 2, h + thick + 2, 7); ctx.strokeStyle = YELLOW_EDGE; ctx.lineWidth = 2.5; ctx.stroke();
+  }
   ui.text(ctx, String(v), x0, cy + inset + h / 2 + 1, Math.round(cs * 0.54), ink, 'center', style === 'B' ? 600 : 500);
   ctx.restore();
 }
@@ -403,7 +409,8 @@ function draw(ctx, th, geo, m, dpr) {
   Paper.fill(ctx, th.boardTexture, dpr, !!th.boardDark, geo.x, geo.y, geo.size, geo.size);
   // 高亮用主色的半透明，纸色和质地都透得出来
   const dk = !!th.boardDark;
-  const HL = { rel: Paper.rgba(th.primary, dk ? 0.12 : 0.1), same: Paper.rgba(th.primary, dk ? 0.24 : 0.19), sel: Paper.rgba(th.primary, dk ? 0.36 : 0.3), hint: Paper.rgba(th.gold, 0.22) };
+  // 相同数字亮黄色（Cc 0.6.1，学 Sudoku 2）；笔记里有这个数的格子淡一点的黄
+  const HL = { rel: Paper.rgba(th.primary, dk ? 0.12 : 0.1), same: Paper.rgba(YELLOW, dk ? 0.42 : 0.5), noteSame: Paper.rgba(YELLOW, dk ? 0.26 : 0.3), sel: Paper.rgba(th.primary, dk ? 0.36 : 0.3), hint: Paper.rgba(th.gold, 0.22) };
 
   // 高亮：同行同列同宫（浅）→ 相同数字（中）→ 选中格（深）
   const sel = m.selected;
@@ -412,7 +419,10 @@ function draw(ctx, th, geo, m, dpr) {
   for (let k = 0; k < 81; k++) {
     let bg = null;
     if (sel >= 0 && k !== sel && (S.ROW(k) === S.ROW(sel) || S.COL(k) === S.COL(sel) || S.BOX(k) === S.BOX(sel))) bg = HL.rel;
-    if (m.sameHighlight !== false && digit && m.vals[k] === digit && k !== sel) bg = HL.same;
+    if (m.sameHighlight !== false && digit && k !== sel) {
+      if (m.vals[k] === digit) bg = HL.same;
+      else if (!m.vals[k] && m.notes && m.notes[k] & S.bit(digit)) bg = HL.noteSame;
+    }
     if (m.hintCells && m.hintCells.indexOf(k) >= 0) bg = HL.hint;
     if (k === sel) bg = HL.sel;
     if (bg) {
@@ -2314,6 +2324,7 @@ module.exports = function (app) {
   let noteMode = false, paused = false;
   let fx = null; // 效果：{ pops, rings, flash, shake, floats }
   let hint = null; // { h, t0 }
+  let selDigit = 0; // 正在亮着的数字
   let guide = null; // 带练：{ h, t0 } 手指指着下一步
   let winAt = 0, saveTimer = 0, lastSec = -1;
   const geo = { x: 0, y: 0, size: 0 };
@@ -2381,12 +2392,17 @@ module.exports = function (app) {
   function select(k) {
     if (paused || winAt) return;
     b.selected = k;
+    // 点到一个有数的格子：高亮跟着换成这个数；点空格子保留原来亮着的数
+    if (k >= 0 && b.vals[k]) selDigit = b.vals[k];
     app.sound('select', 0.4);
   }
   function press(v) {
     if (paused || winAt || b.lost) return;
     const k = b.selected;
-    if (k < 0) { app.toast('先点一个格子'); return; }
+    // 点数字键：盘上所有这个数、笔记里有这个数的格子都亮黄（学 Sudoku 2）。没选格子时只亮、不填
+    selDigit = v;
+    app.animate(150);
+    if (k < 0 || Board.locked(b, k)) { app.sound('select', 0.4); return; }
     const r = Board.input(b, k, v, noteMode, store.data.settings);
     const t = P.now();
     if (r.kind === 'note') { app.sound('note'); }
@@ -2623,6 +2639,7 @@ module.exports = function (app) {
       const done = left === 0;
       const on = ui.button({ id: 'key-' + v, x, y: opts.y, w: keyW, h: opts.h, silent: done, onDown: done || opts.disabled ? null : () => opts.onPress(v) });
       if (on && !done && !opts.disabled) ui.fillRR(ctx, x + 2, opts.y + 2, keyW - 4, opts.h - 4, 12, th.sel);
+      if (opts.active === v) ui.fillRR(ctx, x + keyW / 2 - 13, opts.y + opts.h - 7, 26, 4, 2, '#F5C531'); // 正在亮着的数字：键下一条黄线
       if (opts.highlight === v) {
         ctx.globalAlpha = 0.5 + 0.5 * Math.sin(app.now / 220);
         ui.fillRR(ctx, x + 2, opts.y + 2, keyW - 4, opts.h - 4, 12, th.soft);
@@ -2674,7 +2691,7 @@ module.exports = function (app) {
   app.scenes.play = {
     enter(args) {
       b = args.board;
-      noteMode = false; paused = false; hint = null; winAt = 0; party = null; guide = null;
+      noteMode = false; paused = false; hint = null; winAt = 0; party = null; guide = null; selDigit = 0;
       resetFx();
       layout();
     },
@@ -2706,7 +2723,7 @@ module.exports = function (app) {
       ui.button({ id: 'board', x: geo.x, y: geo.y, w: geo.size, h: geo.size, silent: true, onDown: (x, y) => select(DB.cellAt(geo, x, y)) });
       DB.draw(ctx, th, geo, {
         vals: b.vals, given: b.given, notes: b.notes, wrong: (k) => Board.isWrong(b, k),
-        selected: b.selected, sameHighlight: store.data.settings.sameHighlight,
+        selected: b.selected, selDigit, sameHighlight: store.data.settings.sameHighlight,
         hintCells: hint ? hint.cells : guide && b.guideLeft > 0 ? guide.cells : null,
         pops: fx.pops, rings: fx.rings, flash: fx.flash, shake: fx.shake, hops: fx.hops, now: t, tileStyle: store.data.settings.tileStyle,
       }, app.dpr);
@@ -2734,7 +2751,7 @@ module.exports = function (app) {
         { id: 'note', label: '笔记', icon: 'pencil', active: noteMode, badge: { text: noteMode ? '开' : '关', color: noteMode ? th.primary : th.faint }, onTap: () => tool('note') },
         { id: 'hint', label: '提示', icon: 'bulb', badge: hintBadge, onTap: () => tool('hint') },
       ]);
-      app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone });
+      app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone, active: selDigit });
       if (hint) drawHintCard(ctx, th, t);
       else if (b.guided && b.guideLeft > 0 && !winAt && !paused) drawGuide(ctx, th, t);
       if (party) {
@@ -2752,6 +2769,7 @@ module.exports = function (app) {
     toolCenter: (i) => ({ x: 8 + (i + 0.5) * ((app.W - 16) / 4), y: L.toolsY + L.toolsH / 2 }),
     hint: () => hint,
     guide: () => guide,
+    selDigit: () => selDigit,
     noteMode: () => noteMode,
   };
 };

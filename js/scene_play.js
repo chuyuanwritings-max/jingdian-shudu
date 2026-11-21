@@ -15,6 +15,7 @@ module.exports = function (app) {
   let noteMode = false, paused = false;
   let fx = null; // 效果：{ pops, rings, flash, shake, floats }
   let hint = null; // { h, t0 }
+  let selDigit = 0; // 正在亮着的数字
   let guide = null; // 带练：{ h, t0 } 手指指着下一步
   let winAt = 0, saveTimer = 0, lastSec = -1;
   const geo = { x: 0, y: 0, size: 0 };
@@ -82,12 +83,17 @@ module.exports = function (app) {
   function select(k) {
     if (paused || winAt) return;
     b.selected = k;
+    // 点到一个有数的格子：高亮跟着换成这个数；点空格子保留原来亮着的数
+    if (k >= 0 && b.vals[k]) selDigit = b.vals[k];
     app.sound('select', 0.4);
   }
   function press(v) {
     if (paused || winAt || b.lost) return;
     const k = b.selected;
-    if (k < 0) { app.toast('先点一个格子'); return; }
+    // 点数字键：盘上所有这个数、笔记里有这个数的格子都亮黄（学 Sudoku 2）。没选格子时只亮、不填
+    selDigit = v;
+    app.animate(150);
+    if (k < 0 || Board.locked(b, k)) { app.sound('select', 0.4); return; }
     const r = Board.input(b, k, v, noteMode, store.data.settings);
     const t = P.now();
     if (r.kind === 'note') { app.sound('note'); }
@@ -324,6 +330,7 @@ module.exports = function (app) {
       const done = left === 0;
       const on = ui.button({ id: 'key-' + v, x, y: opts.y, w: keyW, h: opts.h, silent: done, onDown: done || opts.disabled ? null : () => opts.onPress(v) });
       if (on && !done && !opts.disabled) ui.fillRR(ctx, x + 2, opts.y + 2, keyW - 4, opts.h - 4, 12, th.sel);
+      if (opts.active === v) ui.fillRR(ctx, x + keyW / 2 - 13, opts.y + opts.h - 7, 26, 4, 2, '#F5C531'); // 正在亮着的数字：键下一条黄线
       if (opts.highlight === v) {
         ctx.globalAlpha = 0.5 + 0.5 * Math.sin(app.now / 220);
         ui.fillRR(ctx, x + 2, opts.y + 2, keyW - 4, opts.h - 4, 12, th.soft);
@@ -375,7 +382,7 @@ module.exports = function (app) {
   app.scenes.play = {
     enter(args) {
       b = args.board;
-      noteMode = false; paused = false; hint = null; winAt = 0; party = null; guide = null;
+      noteMode = false; paused = false; hint = null; winAt = 0; party = null; guide = null; selDigit = 0;
       resetFx();
       layout();
     },
@@ -407,7 +414,7 @@ module.exports = function (app) {
       ui.button({ id: 'board', x: geo.x, y: geo.y, w: geo.size, h: geo.size, silent: true, onDown: (x, y) => select(DB.cellAt(geo, x, y)) });
       DB.draw(ctx, th, geo, {
         vals: b.vals, given: b.given, notes: b.notes, wrong: (k) => Board.isWrong(b, k),
-        selected: b.selected, sameHighlight: store.data.settings.sameHighlight,
+        selected: b.selected, selDigit, sameHighlight: store.data.settings.sameHighlight,
         hintCells: hint ? hint.cells : guide && b.guideLeft > 0 ? guide.cells : null,
         pops: fx.pops, rings: fx.rings, flash: fx.flash, shake: fx.shake, hops: fx.hops, now: t, tileStyle: store.data.settings.tileStyle,
       }, app.dpr);
@@ -435,7 +442,7 @@ module.exports = function (app) {
         { id: 'note', label: '笔记', icon: 'pencil', active: noteMode, badge: { text: noteMode ? '开' : '关', color: noteMode ? th.primary : th.faint }, onTap: () => tool('note') },
         { id: 'hint', label: '提示', icon: 'bulb', badge: hintBadge, onTap: () => tool('hint') },
       ]);
-      app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone });
+      app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone, active: selDigit });
       if (hint) drawHintCard(ctx, th, t);
       else if (b.guided && b.guideLeft > 0 && !winAt && !paused) drawGuide(ctx, th, t);
       if (party) {
@@ -453,6 +460,7 @@ module.exports = function (app) {
     toolCenter: (i) => ({ x: 8 + (i + 0.5) * ((app.W - 16) / 4), y: L.toolsY + L.toolsH / 2 }),
     hint: () => hint,
     guide: () => guide,
+    selDigit: () => selDigit,
     noteMode: () => noteMode,
   };
 };
