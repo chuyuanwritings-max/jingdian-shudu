@@ -384,6 +384,7 @@ module.exports = function (app) {
   }
 
   // 数字键（教学也用）：opts = { y, h, onPress, counts, noteMode, disabled, highlight }
+  const PAD_TILT = [-3, 2, -2, 3, -1, 2, -3, 1, 3]; // 每个键歪几度
   app.drawPad = (ctx, opts) => {
     const th = app.th, keyW = (app.W - 16) / 9;
     for (let v = 1; v <= 9; v++) {
@@ -391,8 +392,6 @@ module.exports = function (app) {
       const left = opts.counts ? 9 - opts.counts[v] : null;
       const done = left === 0;
       const on = ui.button({ id: 'key-' + v, x, y: opts.y, w: keyW, h: opts.h, silent: done, onDown: done || opts.disabled ? null : () => opts.onPress(v) });
-      if (on && !done && !opts.disabled) ui.fillRR(ctx, x + 2, opts.y + 2, keyW - 4, opts.h - 4, 12, th.sel);
-      if (opts.active === v) ui.fillRR(ctx, x + keyW / 2 - 13, opts.y + opts.h - 7, 26, 4, 2, '#F5C531'); // 正在亮着的数字：键下一条黄线
       if (opts.highlight === v) {
         ctx.globalAlpha = 0.5 + 0.5 * Math.sin(app.now / 220);
         ui.fillRR(ctx, x + 2, opts.y + 2, keyW - 4, opts.h - 4, 12, th.soft);
@@ -412,9 +411,22 @@ module.exports = function (app) {
         ctx.restore();
         continue;
       }
-      const color = done || opts.disabled ? th.faint : opts.noteMode ? th.note : th.primary;
-      ui.text(ctx, String(v), x + keyW / 2, opts.y + opts.h / 2 - (left !== null ? 6 : 0), opts.noteMode ? 26 : 32, color, 'center', opts.noteMode ? 400 : 400);
-      if (left !== null && !done) ui.text(ctx, String(left), x + keyW / 2, opts.y + opts.h - 11, 10, th.faint, 'center');
+      // 键也是方块（学 Sudoku 2 的一排小方块，微微歪一点）：按下压低、摆正；正在亮的数字黄；笔记模式淡一点；填完的只留淡字
+      const cs = Math.min(keyW + 4, opts.h - 16), tx = x + (keyW - cs) / 2, ty = opts.y + 1;
+      if (done || opts.disabled) {
+        ui.text(ctx, String(v), x + keyW / 2, ty + cs / 2, 24, th.faint, 'center', 500);
+      } else {
+        ctx.save();
+        const tilt = on ? 0 : PAD_TILT[v - 1] * Math.PI / 180;
+        ctx.translate(tx + cs / 2, ty + cs / 2 + (on ? 2 : 0));
+        ctx.rotate(tilt);
+        if (on) ctx.scale(0.94, 0.94);
+        ctx.translate(-(tx + cs / 2), -(ty + cs / 2));
+        if (opts.noteMode) ctx.globalAlpha = 0.6;
+        DB.sampleTile(ctx, th, store.data.settings.tileStyle, tx, ty, cs, v, 0, app.now, opts.active === v);
+        ctx.restore();
+      }
+      if (left !== null && !done) ui.text(ctx, String(left), x + keyW / 2, opts.y + opts.h - 9, 10, th.faint, 'center');
     }
   };
   // 工具行（教学也用）：items = [{ id, label, icon, badge, active, onTap, highlight }]

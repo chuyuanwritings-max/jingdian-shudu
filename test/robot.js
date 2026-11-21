@@ -176,7 +176,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   let b = await G.board();
   const given = b.vals.findIndex((v) => v);
   await click(await G.cell(given), 200);
-  await shot('14_点一格_高亮同行同列同宫和相同数字');
+  await shot('14_点一格_相同数字亮黄');
   // 填错一次
   const e0 = b.vals.findIndex((v) => !v);
   await click(await G.cell(e0), 40);

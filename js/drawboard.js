@@ -137,29 +137,25 @@ function draw(ctx, th, geo, m, dpr) {
   ui.rr(ctx, geo.x, geo.y, geo.size, geo.size, 10);
   ctx.clip();
   Paper.fill(ctx, th.boardTexture, dpr, !!th.boardDark, geo.x, geo.y, geo.size, geo.size);
-  // 高亮用主色的半透明，纸色和质地都透得出来
+  // 高亮只用一种颜色：黄（学 Sudoku 2：不染同行同列同宫，只亮相同的数字和选中的格子）
   const dk = !!th.boardDark;
-  // 相同数字亮黄色（Cc 0.6.1，学 Sudoku 2）；笔记里有这个数的格子淡一点的黄
-  const HL = { rel: Paper.rgba(th.primary, dk ? 0.12 : 0.1), same: Paper.rgba(YELLOW, dk ? 0.42 : 0.5), noteSame: Paper.rgba(YELLOW, dk ? 0.26 : 0.3), sel: Paper.rgba(th.primary, dk ? 0.36 : 0.3), hint: Paper.rgba(th.gold, 0.22) };
-
-  // 高亮：同行同列同宫（浅）→ 相同数字（中）→ 选中格（深）
+  const HL = { same: Paper.rgba(YELLOW, dk ? 0.42 : 0.5), noteSame: Paper.rgba(YELLOW, dk ? 0.22 : 0.26), sel: Paper.rgba(YELLOW, dk ? 0.18 : 0.2), hint: Paper.rgba(YELLOW, dk ? 0.3 : 0.34) };
   const sel = m.selected;
   const selVal = sel >= 0 ? m.vals[sel] : 0;
   const digit = m.selDigit || selVal;
+  const cs0 = cs, inset0 = Math.max(2.5, cs0 * 0.07);
   for (let k = 0; k < 81; k++) {
+    const r = cellRect(geo, k);
+    // 空格：一个浅浅凹下去的槽（方块就放在槽里）
+    if (!m.vals[k]) {
+      ui.fillRR(ctx, r.x + inset0, r.y + inset0, cs - inset0 * 2, cs - inset0 * 2, 6, dk ? 'rgba(0,0,0,0.16)' : 'rgba(60,45,20,0.045)');
+      ui.fillRR(ctx, r.x + inset0, r.y + inset0, cs - inset0 * 2, Math.max(1.5, cs * 0.04), 2, dk ? 'rgba(0,0,0,0.22)' : 'rgba(60,45,20,0.07)');
+    }
     let bg = null;
-    if (sel >= 0 && k !== sel && (S.ROW(k) === S.ROW(sel) || S.COL(k) === S.COL(sel) || S.BOX(k) === S.BOX(sel))) bg = HL.rel;
-    if (m.sameHighlight !== false && digit && k !== sel) {
-      if (m.vals[k] === digit) bg = HL.same;
-      else if (!m.vals[k] && m.notes && m.notes[k] & S.bit(digit)) bg = HL.noteSame;
-    }
+    if (m.sameHighlight !== false && digit && !m.vals[k] && m.notes && m.notes[k] & S.bit(digit)) bg = HL.noteSame;
     if (m.hintCells && m.hintCells.indexOf(k) >= 0) bg = HL.hint;
-    if (k === sel) bg = HL.sel;
-    if (bg) {
-      const r = cellRect(geo, k);
-      ctx.fillStyle = bg;
-      ctx.fillRect(r.x, r.y, cs + 0.5, cs + 0.5);
-    }
+    if (k === sel && !m.vals[k]) bg = HL.sel;
+    if (bg) ui.fillRR(ctx, r.x + inset0, r.y + inset0, cs - inset0 * 2, cs - inset0 * 2, 6, bg);
   }
   // 教学：金色区域（「v 只能在这几格」「这两格是一对」）
   if (m.zone) {
@@ -214,17 +210,9 @@ function draw(ctx, th, geo, m, dpr) {
     const g0 = m.gold && m.gold[k];
     const gold = !!g0 && t >= g0[0] && t < g0[1];
     const csc = m.cellScale ? m.cellScale(k, t) : 1;
-    if (v && m.given[k]) {
-      // 题目原有的数字：印在纸上，平的（金面时整格铺金）
-      ctx.save();
-      ctx.translate(r.x + cs / 2 + ox, r.y + cs / 2 + 1 + oy);
-      if (csc !== 1) ctx.scale(csc, csc);
-      if (gold) ui.fillRR(ctx, -cs / 2 + 2, -cs / 2 + 1, cs - 4, cs - 4, 6, '#E9C25A');
-      ui.text(ctx, String(v), 0, 0, fs, gold ? '#3A2A08' : th.given, 'center', 500);
-      ctx.restore();
-    } else if (v) {
-      // 自己填的数字：一块有厚度的方块
-      tile(ctx, th, m, r.x + ox, r.y + oy, cs, v, m.wrong && m.wrong(k), m.pops && m.pops[k], t, digit === v && m.sameHighlight !== false && k !== sel && !gold, gold, csc);
+    if (v) {
+      // 每个数字都是一块有厚度的方块：题目原有的和自己填的一样（学 Sudoku 2）
+      tile(ctx, th, m, r.x + ox, r.y + oy, cs, v, !m.given[k] && m.wrong && m.wrong(k), m.pops && m.pops[k], t, digit === v && m.sameHighlight !== false && !gold, gold, csc);
     } else if (m.notes && m.notes[k]) {
       for (let d = 1; d <= 9; d++) {
         if (!(m.notes[k] & S.bit(d))) continue;
@@ -236,6 +224,12 @@ function draw(ctx, th, geo, m, dpr) {
       }
     }
     ctx.globalAlpha = 1;
+  }
+  // 选中的格子：一圈黄框
+  if (sel >= 0) {
+    const r = cellRect(geo, sel);
+    ui.rr(ctx, r.x + inset0 - 2, r.y + inset0 - 2, cs - inset0 * 2 + 4, cs - inset0 * 2 + 4, 8);
+    ctx.strokeStyle = YELLOW_EDGE; ctx.lineWidth = 3; ctx.stroke();
   }
   // 教学：从挡住它的那个数拉一条红线穿过整排 / 整列，起点一个圆点
   if (m.rays) {
@@ -293,8 +287,9 @@ function cellAt(geo, x, y) {
 }
 
 // 主题页的样式示范：单独画一块方块
-function sampleTile(ctx, th, style, x, y, cs, v, p0, t) {
-  tile(ctx, th, { tileStyle: style }, x, y, cs, v, false, p0, t, false);
+// 也给数字键用（键也是方块，学 Sudoku 2）：same = 正在亮的那个数（黄）
+function sampleTile(ctx, th, style, x, y, cs, v, p0, t, same) {
+  tile(ctx, th, { tileStyle: style }, x, y, cs, v, false, p0, t, !!same);
 }
 
 module.exports = { draw, cellRect, cellAt, sampleTile };
