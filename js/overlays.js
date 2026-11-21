@@ -5,6 +5,7 @@ const C = require('./config.js');
 const S = require('./sudoku.js');
 const store = require('./store.js');
 const Paper = require('./paper.js');
+const T = require('./tutorial.js');
 
 const fmt = (ms) => {
   const s = Math.floor(ms / 1000);
@@ -57,6 +58,12 @@ module.exports = function (app) {
         const st = store.data.stats[i];
         const sub = st.won ? '最好 ' + fmt(st.best) + ' · 赢 ' + st.won + ' 局' : '还没玩过';
         ui.text(ctx, sub, app.W - 52, ry + (rowH - 6) / 2, 13, th.sub, 'right');
+        // 推荐（按第一次打开时选的级别）、这一档要先会的新招
+        ctx.font = ui.font(17, 600);
+        let bx = 36 + ctx.measureText(tier.name).width + 10;
+        if (app.recTier && app.recTier() === i) { ui.fillRR(ctx, bx, ry + 13, 40, 22, 11, th.primary); ui.text(ctx, '推荐', bx + 20, ry + 24, 11, th.primaryText, 'center', 700); bx += 46; }
+        const need = T.TIER_LESSON[i];
+        if (need && !store.data.lessons[need]) { const L = T.LESSONS.find((x) => x.id === need); ui.text(ctx, '新招：' + L.name, bx, ry + 24, 11, th.gold, 'left', 600); }
         ui.icons.chevron(ctx, app.W - 34, ry + (rowH - 6) / 2, 18, th.faint);
       });
       const cy = y + 64 + rowH * 6 + 6;

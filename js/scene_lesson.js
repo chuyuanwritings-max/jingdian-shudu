@@ -13,23 +13,23 @@ module.exports = function (app) {
       const th = app.th, W = app.W;
       app.header(ctx, '教学', () => app.go('home'));
       let y = app.headerY + app.headerH + 12;
-      ui.text(ctx, '五课学会「简单」难度', 24, y + 10, 15, th.sub);
-      y += 34;
+      ui.text(ctx, '前五课学会「简单」，往上每一档再学一招', 24, y + 10, 14, th.sub);
+      y += 30;
+      const h = Math.min(64, Math.max(54, (app.bottom - y - 90) / T.LESSONS.length - 8));
       T.LESSONS.forEach((L, i) => {
         const done = !!store.data.lessons[L.id];
-        const h = 72;
         const on = ui.button({ id: 'lesson-' + i, x: 16, y, w: W - 32, h, onTap: () => app.go('lesson', { index: i }) });
         ui.card(ctx, 16, y, W - 32, h, 16, th);
         if (on) ui.fillRR(ctx, 16, y, W - 32, h, 16, (th.pageDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'));
         ctx.beginPath(); ctx.arc(52, y + h / 2, 18, 0, Math.PI * 2); ctx.fillStyle = done ? th.ok : th.soft; ctx.fill();
         if (done) ui.icons.check(ctx, 52, y + h / 2, 20, '#FFFFFF');
         else ui.text(ctx, String(i + 1), 52, y + h / 2, 16, th.primary, 'center', 700);
-        ui.text(ctx, L.name, 84, y + 26, 17, th.text, 'left', 600);
-        ui.text(ctx, L.sub, 84, y + 49, 13, th.sub);
+        ui.text(ctx, L.name, 84, y + h / 2 - 11, 16, th.text, 'left', 600);
+        ui.text(ctx, L.sub, 84, y + h / 2 + 11, 12, th.sub);
         ui.icons.chevron(ctx, W - 38, y + h / 2, 18, th.faint);
-        y += h + 10;
+        y += h + 8;
       });
-      const all = T.LESSONS.every((L) => store.data.lessons[L.id]);
+      const all = T.LESSONS.slice(0, 5).every((L) => store.data.lessons[L.id]);
       y += 8;
       ui.pill(ctx, th, 'lessons-play', 16, y, W - 32, 52, all ? '学完了，去玩一局「简单」' : '直接玩一局「入门」', () => app.startGame(all ? 1 : 0), all ? 'primary' : 'soft');
     },
@@ -56,10 +56,9 @@ module.exports = function (app) {
     lesson.vals = new Array(81).fill(0);
     lesson.given = new Array(81).fill(false);
     for (const k of st.show) { lesson.vals[k] = T.SOL[k]; lesson.given[k] = true; }
-    // 笔记课是连着的三步：上一步的笔记、填过的数留着；别的课每一步换新盘面
-    if (!st.noteTool) { lesson.carry = null; lesson.keepNotes = null; }
-    lesson.notes = lesson.keepNotes || new Array(81).fill(0);
-    if (lesson.carry) for (const k in lesson.carry) { lesson.vals[k] = lesson.carry[k]; }
+    // 每一步自己带笔记（notesPre），不再接上一步
+    lesson.notes = new Array(81).fill(0);
+    if (st.notesPre) for (const k in st.notesPre) lesson.notes[k] = st.notesPre[k];
     lesson.ai = 0; lesson.misses = 0; lesson.ok = false; lesson.t0 = P.now(); lesson.lastAct = P.now();
     lesson.sel = -1; lesson.demoDone = !st.demo; lesson.fx = { pops: {}, rings: [], shake: null };
     if (st.actions === undefined && !st.demo) lesson.demoDone = true;
@@ -83,8 +82,6 @@ module.exports = function (app) {
         else {
           lesson.vals[k] = val;
           lesson.notes[k] = 0;
-          lesson.carry = lesson.carry || {};
-          lesson.carry[k] = val;
           // 自动擦笔记
           for (const p of S.PEERS[k]) lesson.notes[p] &= ~S.bit(val);
           lesson.fx.pops[k] = t; lesson.fx.rings.push({ k, t0: t });
@@ -99,7 +96,6 @@ module.exports = function (app) {
     }
     if (lesson.ai >= st.actions.length) {
       lesson.ok = true;
-      lesson.keepNotes = lesson.notes;
       setTimeout(() => app.sound('correct'), 120);
       app.buzz('medium');
     }
@@ -111,7 +107,9 @@ module.exports = function (app) {
     app.animate(400);
   }
   function next() {
+    lesson.totalMisses += lesson.misses;
     if (lesson.si + 1 < lesson.steps.length) { lesson.si++; loadStep(); app.animate(300); return; }
+    if (lesson.quiz) { app.quizDone(lesson.totalMisses); return; }
     // 学完
     const L0 = T.LESSONS[lesson.index];
     store.data.lessons[L0.id] = true;
@@ -130,7 +128,12 @@ module.exports = function (app) {
         ui.icons.check(ctx, app.W / 2, m.y + 52, 30, '#FFFFFF', 3.4);
         ui.text(ctx, '学会了「' + T.LESSONS[i].name + '」', app.W / 2, m.y + 104, 20, th.text, 'center', 700);
         const bx = m.x + 20, bw = m.w - 40;
-        if (ret === 'play') {
+        if (lesson.then === 'guided') {
+          ui.pill(ctx, th, 'lf-guided', bx, m.y + 140, bw, 50, '开始第一局（带着你下）', () => { app.pop(); app.startGame(0, { guided: true }); }, 'primary');
+        } else if (lesson.then && lesson.then.tier !== undefined) {
+          const tn = S.TIERS[lesson.then.tier].name;
+          ui.pill(ctx, th, 'lf-tier', bx, m.y + 140, bw, 50, '开始「' + tn + '」', () => { app.pop(); app.startGame(lesson.then.tier, { skipGate: true }); }, 'primary');
+        } else if (ret === 'play') {
           ui.pill(ctx, th, 'lf-back', bx, m.y + 140, bw, 50, '回到这一局', () => { app.pop(); app.continueGame(); }, 'primary');
         } else if (nextL) {
           ui.pill(ctx, th, 'lf-next', bx, m.y + 140, bw, 50, '下一课：' + nextL.name, () => { app.pop(); app.go('lesson', { index: i + 1, firstRun: lesson.firstRun }); }, 'primary');
@@ -147,7 +150,9 @@ module.exports = function (app) {
     enter(args) {
       let index = args.index;
       if (args.id) index = T.LESSONS.findIndex((x) => x.id === args.id);
-      lesson = { index, steps: T.LESSONS[index].build(), si: 0, returnTo: args.returnTo, firstRun: args.firstRun, noteMode: false };
+      // args.quiz：「会一点」的两道小测；args.then：学完去哪（'guided' 带练局 / { tier } 开这一档）
+      const steps = args.quiz ? T.quizSteps() : T.LESSONS[index].build();
+      lesson = { index, steps, si: 0, returnTo: args.returnTo, firstRun: args.firstRun, noteMode: false, quiz: !!args.quiz, then: args.then, totalMisses: 0 };
       if (args.firstRun) { store.data.seen.tutorial = true; store.save(); }
       layout();
       loadStep();
@@ -156,8 +161,8 @@ module.exports = function (app) {
     draw(ctx, t) {
       const th = app.th, W = app.W;
       const st = stepNow();
-      const L0 = T.LESSONS[lesson.index];
-      app.header(ctx, '第 ' + (lesson.index + 1) + ' 课 · ' + L0.name, () => app.go(lesson.returnTo === 'play' ? 'play' : 'lessons', lesson.returnTo === 'play' ? { board: store.data.current } : {}), (c, y, h) => {
+      const L0 = T.LESSONS[lesson.index || 0];
+      app.header(ctx, lesson.quiz ? '小测 · 帮你选难度' : '第 ' + (lesson.index + 1) + ' 课 · ' + L0.name, () => app.go(lesson.returnTo === 'play' ? 'play' : 'lessons', lesson.returnTo === 'play' ? { board: store.data.current } : {}), (c, y, h) => {
         if (!lesson.firstRun) return;
         const x = app.headerRight - 64;
         ui.button({ id: 'skip', x, y, w: 60, h, onTap: () => app.go('home') });
@@ -188,13 +193,16 @@ module.exports = function (app) {
       const vals = lesson.vals.slice();
       if (st.demo && demoP > 0.7) {
         vals[st.demo.k] = st.demo.v;
-        if (!lesson.demoDone) { lesson.demoDone = true; lesson.fx.pops[st.demo.k] = t; lesson.fx.rings.push({ k: st.demo.k, t0: t }); app.sound('place'); }
+        if (!lesson.demoDone) {
+          lesson.demoDone = true; lesson.fx.pops[st.demo.k] = t; lesson.fx.rings.push({ k: st.demo.k, t0: t }); app.sound('place');
+          for (const p of S.PEERS[st.demo.k]) lesson.notes[p] &= ~S.bit(st.demo.v);
+        }
       }
       const showRays = st.rays && (!st.raysAfterMiss || lesson.misses > 0);
       DB.draw(ctx, th, geo, {
         vals, given: lesson.given, notes: lesson.notes, wrong: () => false,
         selected: lesson.sel, sameHighlight: true, focus: st.focus,
-        rays: showRays ? st.rays : null, mark: st.mark, pops: lesson.fx.pops, rings: lesson.fx.rings, shake: lesson.fx.shake, now: t, tileStyle: store.data.settings.tileStyle,
+        rays: showRays ? st.rays : null, zone: st.zone, strikeNotes: st.strikeNotes, mark: st.mark, pops: lesson.fx.pops, rings: lesson.fx.rings, shake: lesson.fx.shake, now: t, tileStyle: store.data.settings.tileStyle,
       }, app.dpr);
 
       // 底部：练习步 = 工具 + 数字键；演示步 = 「下一步」
@@ -218,7 +226,7 @@ module.exports = function (app) {
   function showHand(st, t) {
     if (!st.actions || lesson.ok) return false;
     if (lesson.misses > 0) return true;
-    return t - lesson.lastAct > (st.handDelay || 2600);
+    return t - lesson.lastAct > (st.handDelay || 900);
   }
   function drawHand(ctx, th, st, t, exp) {
     let target = null;

@@ -123,10 +123,18 @@ function drawToasts(ctx, t) {
     ctx.save();
     ctx.globalAlpha = a;
     ctx.font = ui.font(15, 500);
-    const w = Math.min(app.W - 40, ctx.measureText(x.msg).width + 36);
+    const maxW = app.W - 64;
+    const lines = [];
+    String(x.msg).split('\n').forEach((para) => {
+      let line = '';
+      for (const ch of para) { if (ctx.measureText(line + ch).width > maxW && line) { lines.push(line); line = ch; } else line += ch; }
+      lines.push(line);
+    });
+    const w = Math.min(app.W - 40, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 36);
+    const h = 20 + lines.length * 22;
     const y = app.H * 0.42;
-    ui.fillRR(ctx, app.W / 2 - w / 2, y, w, 42, 21, 'rgba(30,34,42,0.88)');
-    ui.text(ctx, x.msg, app.W / 2, y + 21, 15, '#FFFFFF', 'center', 500);
+    ui.fillRR(ctx, app.W / 2 - w / 2, y, w, h, Math.min(21, h / 2), 'rgba(30,34,42,0.88)');
+    lines.forEach((l, i) => ui.text(ctx, l, app.W / 2, y + 21 + i * 22, 15, '#FFFFFF', 'center', 500));
     ctx.restore();
   }
 }
@@ -169,8 +177,9 @@ require('./scene_lesson.js')(app);
 require('./scene_pages.js')(app);
 require('./overlays.js')(app);
 require('./scene_look.js')(app);
+require('./scene_welcome.js')(app);
 
-if (!store.data.seen.tutorial) app.go('lesson', { index: 0, firstRun: true });
+if (!store.data.seen.tutorial) app.go('welcome');
 else app.go('home');
 frame();
 

@@ -54,9 +54,11 @@ function create(opts) {
     mode: opts.mode || 'normal', tier: opts.tier || 0, idx: opts.idx || 0, date: opts.date || '',
     puzzle: opts.puzzle, sol: sol.join(''),
     vals: puzzle.slice(), given: puzzle.map(Boolean), notes: new Array(81).fill(0),
-    mistakes: 0, elapsed: 0, score: 0, hintsLeft: C.RULES.freeHints, hintsUsed: 0,
+    mistakes: 0, elapsed: 0, score: 0, hintsLeft: opts.guided ? 99 : C.RULES.freeHints, hintsUsed: 0,
     scored: new Array(81).fill(false), missed: new Array(81).fill(false), lastCorrectAt: 0,
     history: [], done: false, lost: false, revives: 0, selected: -1,
+    // 带练局（新人第一局）：前 guideLeft 步手指带着走，提示不限次数
+    guided: !!opts.guided, guideLeft: opts.guided ? 3 : 0,
   };
 }
 
@@ -172,7 +174,7 @@ module.exports = { create, input, erase, undo, findHint, fillHint, revive, count
 __def("js/config.js", function (module, exports, require) {
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.4';
+const VERSION = '0.5';
 
 // 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
 // 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
@@ -419,6 +421,11 @@ function draw(ctx, th, geo, m, dpr) {
       ctx.fillRect(r.x, r.y, cs + 0.5, cs + 0.5);
     }
   }
+  // 教学：金色区域（「v 只能在这几格」「这两格是一对」）
+  if (m.zone) {
+    ctx.fillStyle = Paper.rgba(th.gold, dk ? 0.3 : 0.28);
+    for (const k of m.zone) { const r = cellRect(geo, k); ctx.fillRect(r.x, r.y, cs + 0.5, cs + 0.5); }
+  }
   // 教学：被「划掉」的行列（淡红带）
   if (m.rays) {
     ctx.fillStyle = th.wrong;
@@ -477,10 +484,29 @@ function draw(ctx, th, geo, m, dpr) {
         if (!(m.notes[k] & S.bit(d))) continue;
         const nx = r.x + ((d - 1) % 3 + 0.5) * cs / 3, ny = r.y + (Math.floor((d - 1) / 3) + 0.5) * cs / 3;
         if (digit === d && m.sameHighlight !== false) ui.fillRR(ctx, nx - cs / 7, ny - cs / 7, cs / 3.5, cs / 3.5, 3, HL.same);
-        ui.text(ctx, String(d), nx + ox, ny + 0.5, ns, digit === d ? th.text : th.note, 'center', digit === d ? 600 : 400);
+        const struck = m.strikeNotes && m.strikeNotes[k] && m.strikeNotes[k] & S.bit(d);
+        ui.text(ctx, String(d), nx + ox, ny + 0.5, ns, struck ? th.faint : digit === d ? th.text : th.note, 'center', digit === d ? 600 : 400);
+        if (struck) { ctx.strokeStyle = th.wrong; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(nx - ns * 0.45, ny + ns * 0.4); ctx.lineTo(nx + ns * 0.45, ny - ns * 0.4); ctx.stroke(); }
       }
     }
     ctx.globalAlpha = 1;
+  }
+  // 教学：从挡住它的那个数拉一条红线穿过整排 / 整列，起点一个圆点
+  if (m.rays) {
+    ctx.save();
+    ctx.strokeStyle = Paper.rgba(th.wrong, 0.7);
+    ctx.fillStyle = Paper.rgba(th.wrong, 0.85);
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 5]);
+    for (const ray of m.rays) {
+      const r = cellRect(geo, ray.k), cx = r.x + cs / 2, cy = r.y + cs / 2;
+      ctx.beginPath();
+      if (ray.dir === 'row') { ctx.moveTo(geo.x + 4, cy); ctx.lineTo(geo.x + geo.size - 4, cy); }
+      else { ctx.moveTo(cx, geo.y + 4); ctx.lineTo(cx, geo.y + geo.size - 4); }
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, cs * 0.42, 0, Math.PI * 2); ctx.setLineDash([]); ctx.lineWidth = 2.5; ctx.stroke(); ctx.setLineDash([6, 5]); ctx.lineWidth = 2;
+    }
+    ctx.restore();
   }
   // 教学：标一格（呼吸的框）
   if (m.mark >= 0 && m.mark !== undefined) {
@@ -654,10 +680,18 @@ function drawToasts(ctx, t) {
     ctx.save();
     ctx.globalAlpha = a;
     ctx.font = ui.font(15, 500);
-    const w = Math.min(app.W - 40, ctx.measureText(x.msg).width + 36);
+    const maxW = app.W - 64;
+    const lines = [];
+    String(x.msg).split('\n').forEach((para) => {
+      let line = '';
+      for (const ch of para) { if (ctx.measureText(line + ch).width > maxW && line) { lines.push(line); line = ch; } else line += ch; }
+      lines.push(line);
+    });
+    const w = Math.min(app.W - 40, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 36);
+    const h = 20 + lines.length * 22;
     const y = app.H * 0.42;
-    ui.fillRR(ctx, app.W / 2 - w / 2, y, w, 42, 21, 'rgba(30,34,42,0.88)');
-    ui.text(ctx, x.msg, app.W / 2, y + 21, 15, '#FFFFFF', 'center', 500);
+    ui.fillRR(ctx, app.W / 2 - w / 2, y, w, h, Math.min(21, h / 2), 'rgba(30,34,42,0.88)');
+    lines.forEach((l, i) => ui.text(ctx, l, app.W / 2, y + 21 + i * 22, 15, '#FFFFFF', 'center', 500));
     ctx.restore();
   }
 }
@@ -700,8 +734,9 @@ require('./scene_lesson.js')(app);
 require('./scene_pages.js')(app);
 require('./overlays.js')(app);
 require('./scene_look.js')(app);
+require('./scene_welcome.js')(app);
 
-if (!store.data.seen.tutorial) app.go('lesson', { index: 0, firstRun: true });
+if (!store.data.seen.tutorial) app.go('welcome');
 else app.go('home');
 frame();
 
@@ -719,6 +754,7 @@ const C = require('./config.js');
 const S = require('./sudoku.js');
 const store = require('./store.js');
 const Paper = require('./paper.js');
+const T = require('./tutorial.js');
 
 const fmt = (ms) => {
   const s = Math.floor(ms / 1000);
@@ -771,6 +807,12 @@ module.exports = function (app) {
         const st = store.data.stats[i];
         const sub = st.won ? '最好 ' + fmt(st.best) + ' · 赢 ' + st.won + ' 局' : '还没玩过';
         ui.text(ctx, sub, app.W - 52, ry + (rowH - 6) / 2, 13, th.sub, 'right');
+        // 推荐（按第一次打开时选的级别）、这一档要先会的新招
+        ctx.font = ui.font(17, 600);
+        let bx = 36 + ctx.measureText(tier.name).width + 10;
+        if (app.recTier && app.recTier() === i) { ui.fillRR(ctx, bx, ry + 13, 40, 22, 11, th.primary); ui.text(ctx, '推荐', bx + 20, ry + 24, 11, th.primaryText, 'center', 700); bx += 46; }
+        const need = T.TIER_LESSON[i];
+        if (need && !store.data.lessons[need]) { const L = T.LESSONS.find((x) => x.id === need); ui.text(ctx, '新招：' + L.name, bx, ry + 24, 11, th.gold, 'left', 600); }
         ui.icons.chevron(ctx, app.W - 34, ry + (rowH - 6) / 2, 18, th.faint);
       });
       const cy = y + 64 + rowH * 6 + 6;
@@ -1370,23 +1412,23 @@ module.exports = function (app) {
       const th = app.th, W = app.W;
       app.header(ctx, '教学', () => app.go('home'));
       let y = app.headerY + app.headerH + 12;
-      ui.text(ctx, '五课学会「简单」难度', 24, y + 10, 15, th.sub);
-      y += 34;
+      ui.text(ctx, '前五课学会「简单」，往上每一档再学一招', 24, y + 10, 14, th.sub);
+      y += 30;
+      const h = Math.min(64, Math.max(54, (app.bottom - y - 90) / T.LESSONS.length - 8));
       T.LESSONS.forEach((L, i) => {
         const done = !!store.data.lessons[L.id];
-        const h = 72;
         const on = ui.button({ id: 'lesson-' + i, x: 16, y, w: W - 32, h, onTap: () => app.go('lesson', { index: i }) });
         ui.card(ctx, 16, y, W - 32, h, 16, th);
         if (on) ui.fillRR(ctx, 16, y, W - 32, h, 16, (th.pageDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'));
         ctx.beginPath(); ctx.arc(52, y + h / 2, 18, 0, Math.PI * 2); ctx.fillStyle = done ? th.ok : th.soft; ctx.fill();
         if (done) ui.icons.check(ctx, 52, y + h / 2, 20, '#FFFFFF');
         else ui.text(ctx, String(i + 1), 52, y + h / 2, 16, th.primary, 'center', 700);
-        ui.text(ctx, L.name, 84, y + 26, 17, th.text, 'left', 600);
-        ui.text(ctx, L.sub, 84, y + 49, 13, th.sub);
+        ui.text(ctx, L.name, 84, y + h / 2 - 11, 16, th.text, 'left', 600);
+        ui.text(ctx, L.sub, 84, y + h / 2 + 11, 12, th.sub);
         ui.icons.chevron(ctx, W - 38, y + h / 2, 18, th.faint);
-        y += h + 10;
+        y += h + 8;
       });
-      const all = T.LESSONS.every((L) => store.data.lessons[L.id]);
+      const all = T.LESSONS.slice(0, 5).every((L) => store.data.lessons[L.id]);
       y += 8;
       ui.pill(ctx, th, 'lessons-play', 16, y, W - 32, 52, all ? '学完了，去玩一局「简单」' : '直接玩一局「入门」', () => app.startGame(all ? 1 : 0), all ? 'primary' : 'soft');
     },
@@ -1413,10 +1455,9 @@ module.exports = function (app) {
     lesson.vals = new Array(81).fill(0);
     lesson.given = new Array(81).fill(false);
     for (const k of st.show) { lesson.vals[k] = T.SOL[k]; lesson.given[k] = true; }
-    // 笔记课是连着的三步：上一步的笔记、填过的数留着；别的课每一步换新盘面
-    if (!st.noteTool) { lesson.carry = null; lesson.keepNotes = null; }
-    lesson.notes = lesson.keepNotes || new Array(81).fill(0);
-    if (lesson.carry) for (const k in lesson.carry) { lesson.vals[k] = lesson.carry[k]; }
+    // 每一步自己带笔记（notesPre），不再接上一步
+    lesson.notes = new Array(81).fill(0);
+    if (st.notesPre) for (const k in st.notesPre) lesson.notes[k] = st.notesPre[k];
     lesson.ai = 0; lesson.misses = 0; lesson.ok = false; lesson.t0 = P.now(); lesson.lastAct = P.now();
     lesson.sel = -1; lesson.demoDone = !st.demo; lesson.fx = { pops: {}, rings: [], shake: null };
     if (st.actions === undefined && !st.demo) lesson.demoDone = true;
@@ -1440,8 +1481,6 @@ module.exports = function (app) {
         else {
           lesson.vals[k] = val;
           lesson.notes[k] = 0;
-          lesson.carry = lesson.carry || {};
-          lesson.carry[k] = val;
           // 自动擦笔记
           for (const p of S.PEERS[k]) lesson.notes[p] &= ~S.bit(val);
           lesson.fx.pops[k] = t; lesson.fx.rings.push({ k, t0: t });
@@ -1456,7 +1495,6 @@ module.exports = function (app) {
     }
     if (lesson.ai >= st.actions.length) {
       lesson.ok = true;
-      lesson.keepNotes = lesson.notes;
       setTimeout(() => app.sound('correct'), 120);
       app.buzz('medium');
     }
@@ -1468,7 +1506,9 @@ module.exports = function (app) {
     app.animate(400);
   }
   function next() {
+    lesson.totalMisses += lesson.misses;
     if (lesson.si + 1 < lesson.steps.length) { lesson.si++; loadStep(); app.animate(300); return; }
+    if (lesson.quiz) { app.quizDone(lesson.totalMisses); return; }
     // 学完
     const L0 = T.LESSONS[lesson.index];
     store.data.lessons[L0.id] = true;
@@ -1487,7 +1527,12 @@ module.exports = function (app) {
         ui.icons.check(ctx, app.W / 2, m.y + 52, 30, '#FFFFFF', 3.4);
         ui.text(ctx, '学会了「' + T.LESSONS[i].name + '」', app.W / 2, m.y + 104, 20, th.text, 'center', 700);
         const bx = m.x + 20, bw = m.w - 40;
-        if (ret === 'play') {
+        if (lesson.then === 'guided') {
+          ui.pill(ctx, th, 'lf-guided', bx, m.y + 140, bw, 50, '开始第一局（带着你下）', () => { app.pop(); app.startGame(0, { guided: true }); }, 'primary');
+        } else if (lesson.then && lesson.then.tier !== undefined) {
+          const tn = S.TIERS[lesson.then.tier].name;
+          ui.pill(ctx, th, 'lf-tier', bx, m.y + 140, bw, 50, '开始「' + tn + '」', () => { app.pop(); app.startGame(lesson.then.tier, { skipGate: true }); }, 'primary');
+        } else if (ret === 'play') {
           ui.pill(ctx, th, 'lf-back', bx, m.y + 140, bw, 50, '回到这一局', () => { app.pop(); app.continueGame(); }, 'primary');
         } else if (nextL) {
           ui.pill(ctx, th, 'lf-next', bx, m.y + 140, bw, 50, '下一课：' + nextL.name, () => { app.pop(); app.go('lesson', { index: i + 1, firstRun: lesson.firstRun }); }, 'primary');
@@ -1504,7 +1549,9 @@ module.exports = function (app) {
     enter(args) {
       let index = args.index;
       if (args.id) index = T.LESSONS.findIndex((x) => x.id === args.id);
-      lesson = { index, steps: T.LESSONS[index].build(), si: 0, returnTo: args.returnTo, firstRun: args.firstRun, noteMode: false };
+      // args.quiz：「会一点」的两道小测；args.then：学完去哪（'guided' 带练局 / { tier } 开这一档）
+      const steps = args.quiz ? T.quizSteps() : T.LESSONS[index].build();
+      lesson = { index, steps, si: 0, returnTo: args.returnTo, firstRun: args.firstRun, noteMode: false, quiz: !!args.quiz, then: args.then, totalMisses: 0 };
       if (args.firstRun) { store.data.seen.tutorial = true; store.save(); }
       layout();
       loadStep();
@@ -1513,8 +1560,8 @@ module.exports = function (app) {
     draw(ctx, t) {
       const th = app.th, W = app.W;
       const st = stepNow();
-      const L0 = T.LESSONS[lesson.index];
-      app.header(ctx, '第 ' + (lesson.index + 1) + ' 课 · ' + L0.name, () => app.go(lesson.returnTo === 'play' ? 'play' : 'lessons', lesson.returnTo === 'play' ? { board: store.data.current } : {}), (c, y, h) => {
+      const L0 = T.LESSONS[lesson.index || 0];
+      app.header(ctx, lesson.quiz ? '小测 · 帮你选难度' : '第 ' + (lesson.index + 1) + ' 课 · ' + L0.name, () => app.go(lesson.returnTo === 'play' ? 'play' : 'lessons', lesson.returnTo === 'play' ? { board: store.data.current } : {}), (c, y, h) => {
         if (!lesson.firstRun) return;
         const x = app.headerRight - 64;
         ui.button({ id: 'skip', x, y, w: 60, h, onTap: () => app.go('home') });
@@ -1545,13 +1592,16 @@ module.exports = function (app) {
       const vals = lesson.vals.slice();
       if (st.demo && demoP > 0.7) {
         vals[st.demo.k] = st.demo.v;
-        if (!lesson.demoDone) { lesson.demoDone = true; lesson.fx.pops[st.demo.k] = t; lesson.fx.rings.push({ k: st.demo.k, t0: t }); app.sound('place'); }
+        if (!lesson.demoDone) {
+          lesson.demoDone = true; lesson.fx.pops[st.demo.k] = t; lesson.fx.rings.push({ k: st.demo.k, t0: t }); app.sound('place');
+          for (const p of S.PEERS[st.demo.k]) lesson.notes[p] &= ~S.bit(st.demo.v);
+        }
       }
       const showRays = st.rays && (!st.raysAfterMiss || lesson.misses > 0);
       DB.draw(ctx, th, geo, {
         vals, given: lesson.given, notes: lesson.notes, wrong: () => false,
         selected: lesson.sel, sameHighlight: true, focus: st.focus,
-        rays: showRays ? st.rays : null, mark: st.mark, pops: lesson.fx.pops, rings: lesson.fx.rings, shake: lesson.fx.shake, now: t, tileStyle: store.data.settings.tileStyle,
+        rays: showRays ? st.rays : null, zone: st.zone, strikeNotes: st.strikeNotes, mark: st.mark, pops: lesson.fx.pops, rings: lesson.fx.rings, shake: lesson.fx.shake, now: t, tileStyle: store.data.settings.tileStyle,
       }, app.dpr);
 
       // 底部：练习步 = 工具 + 数字键；演示步 = 「下一步」
@@ -1575,7 +1625,7 @@ module.exports = function (app) {
   function showHand(st, t) {
     if (!st.actions || lesson.ok) return false;
     if (lesson.misses > 0) return true;
-    return t - lesson.lastAct > (st.handDelay || 2600);
+    return t - lesson.lastAct > (st.handDelay || 900);
   }
   function drawHand(ctx, th, st, t, exp) {
     let target = null;
@@ -2043,6 +2093,7 @@ module.exports = function (app) {
   let noteMode = false, paused = false;
   let fx = null; // 效果：{ pops, rings, flash, shake, floats }
   let hint = null; // { h, t0 }
+  let guide = null; // 带练：{ h, t0 } 手指指着下一步
   let winAt = 0, saveTimer = 0, lastSec = -1;
   const geo = { x: 0, y: 0, size: 0 };
   let L = null; // 布局
@@ -2070,6 +2121,15 @@ module.exports = function (app) {
   // ---------- 开局 / 继续 ----------
   app.startGame = (tier, opts) => {
     opts = opts || {};
+    // 每升一档，先学一招：第一次玩「中等」「困难」前，问一句要不要先花 1 分钟学这一档的新招
+    const need = T.TIER_LESSON[tier];
+    if (need && !opts.skipGate && !opts.guided && (opts.mode || 'normal') === 'normal' && !store.data.lessons[need] && !(store.data.gateSeen || {})[tier]) {
+      store.data.gateSeen = store.data.gateSeen || {};
+      store.data.gateSeen[tier] = true;
+      store.save();
+      app.tierGate(tier, need);
+      return;
+    }
     let idx, mode = opts.mode || 'normal';
     if (mode === 'daily') idx = opts.idx;
     else {
@@ -2078,7 +2138,7 @@ module.exports = function (app) {
       store.data.next[tier] = (idx + 1) % half;
     }
     store.startGame(tier, mode);
-    const nb = Board.create({ mode, tier, idx, date: opts.date, puzzle: bank[tier][idx] });
+    const nb = Board.create({ mode, tier, idx, date: opts.date, puzzle: bank[tier][idx], guided: opts.guided });
     store.data.current = nb;
     store.save();
     app.go('play', { board: nb });
@@ -2124,6 +2184,11 @@ module.exports = function (app) {
   }
   function onCorrect(k, v, r, t) {
     hint = null;
+    if (b.guided && b.guideLeft > 0) {
+      b.guideLeft--;
+      guide = null;
+      if (b.guideLeft === 0) setTimeout(() => app.toast('接下来你自己来！\n卡住了就点「提示」，这一局不限次数', 2800), 500);
+    }
     fx.pops[k] = t;
     fx.rings.push({ k, t0: t });
     if (r.gain) fx.floats.push({ k, t0: t + 120, text: '+' + r.gain });
@@ -2277,6 +2342,27 @@ module.exports = function (app) {
     ui.text(ctx, String(b.score), W / 2, y, 17, th.text, 'center', 700);
     if (store.data.settings.showTimer !== false) ui.text(ctx, app.fmt(b.elapsed), W - 20, y, 14, th.text, 'right', 500);
   }
+  // 带练：卡片上一行字说为什么，手指先指格子、选中以后指数字键
+  function drawGuide(ctx, th, t) {
+    if (!guide) {
+      const h = Board.findHint(b);
+      if (!h) return;
+      const tech = h.step && h.step.tech;
+      guide = { h, t0: t, cells: h.step ? (tech === 'nakedSingle' ? [h.place.k] : h.step.focus || h.step.cells) : [h.place.k] };
+    }
+    const g = guide, k = g.h.place.k, v = g.h.place.v;
+    const p = Math.min(1, (t - g.t0) / 220);
+    const x = 12, w = app.W - 24, hh = 64;
+    const y = (hintBelow ? geo.y + geo.size + 10 : L.toolsY + L.toolsH - hh) + (1 - ui.ease.out(p)) * 10;
+    ctx.save();
+    ctx.globalAlpha = p;
+    ui.card(ctx, x, y, w, hh, 14, th);
+    ui.text(ctx, '第 ' + (4 - b.guideLeft) + ' / 3 步', x + 16, y + 18, 12, th.primary, 'left', 700);
+    ui.wrap(ctx, g.h.text.replace(/^[^：]*：/, ''), x + 16, y + 30, w - 32, 13, 17, th.text);
+    ctx.restore();
+    const target = b.selected === k ? { x: 8 + (v - 0.5) * L.keyW, y: L.padY + L.padH / 2 } : (() => { const r = DB.cellRect(geo, k); return { x: r.x + r.s / 2, y: r.y + r.s / 2 }; })();
+    ui.icons.hand(ctx, target.x + 4, target.y + 6 + Math.sin(t / 220) * 5, 44, th.text);
+  }
   function drawHintCard(ctx, th, t) {
     const p = Math.min(1, (t - hint.t0) / 220);
     const x = 12, w = app.W - 24, h = 64;
@@ -2362,7 +2448,7 @@ module.exports = function (app) {
   app.scenes.play = {
     enter(args) {
       b = args.board;
-      noteMode = false; paused = false; hint = null; winAt = 0; party = null;
+      noteMode = false; paused = false; hint = null; winAt = 0; party = null; guide = null;
       resetFx();
       layout();
     },
@@ -2377,7 +2463,7 @@ module.exports = function (app) {
       saveTimer += dt;
       if (saveTimer > 3000) { saveTimer = 0; persist(); }
     },
-    live: (t) => !!party || (!!hint && t - hint.t0 < 400),
+    live: (t) => !!party || (!!hint && t - hint.t0 < 400) || (!!b && b.guided && b.guideLeft > 0),
     draw(ctx, t) {
       const th = app.th;
       const tierName = S.TIERS[b.tier].name;
@@ -2395,7 +2481,7 @@ module.exports = function (app) {
       DB.draw(ctx, th, geo, {
         vals: b.vals, given: b.given, notes: b.notes, wrong: (k) => Board.isWrong(b, k),
         selected: b.selected, sameHighlight: store.data.settings.sameHighlight,
-        hintCells: hint ? hint.cells : null,
+        hintCells: hint ? hint.cells : guide && b.guideLeft > 0 ? guide.cells : null,
         pops: fx.pops, rings: fx.rings, flash: fx.flash, shake: fx.shake, hops: fx.hops, now: t, tileStyle: store.data.settings.tileStyle,
       }, app.dpr);
       if (paused) {
@@ -2424,6 +2510,7 @@ module.exports = function (app) {
       ]);
       app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone });
       if (hint) drawHintCard(ctx, th, t);
+      else if (b.guided && b.guideLeft > 0 && !winAt && !paused) drawGuide(ctx, th, t);
       if (party) {
         drawParty(ctx, th, t);
         ui.button({ id: 'party-skip', x: 0, y: 0, w: app.W, h: app.H, onTap: endParty }); // 点一下跳过
@@ -2438,7 +2525,112 @@ module.exports = function (app) {
     padCenter: (v) => ({ x: 8 + (v - 0.5) * L.keyW, y: L.padY + L.padH / 2 }),
     toolCenter: (i) => ({ x: 8 + (i + 0.5) * ((app.W - 16) / 4), y: L.toolsY + L.toolsH / 2 }),
     hint: () => hint,
+    guide: () => guide,
     noteMode: () => noteMode,
+  };
+};
+
+});
+__def("js/scene_welcome.js", function (module, exports, require) {
+// 第一次打开：先问「你玩过数独吗？」，按回答分三条路（Cc 0.5：「进游戏之后，先让玩家选自己是什么级别的」）。
+//   没玩过 → 第 1 课规则（30 秒）→ 带练局（前 3 步手指带着走）
+//   会一点 → 两道小测 → 推荐「简单」或「入门 + 带练」
+//   很熟   → 首页，推荐「中等」
+// 这里也放：小测结果、「每升一档先学一招」的弹窗。
+const ui = require('./ui.js');
+const S = require('./sudoku.js');
+const T = require('./tutorial.js');
+const store = require('./store.js');
+
+// 每个级别推荐从哪一档开始
+const REC_TIER = { new: 0, some: 1, pro: 2 };
+
+module.exports = function (app) {
+  app.recTier = () => (store.data.level ? REC_TIER[store.data.level] : -1);
+
+  function choose(level) {
+    store.data.level = level;
+    store.data.seen.tutorial = true;
+    store.save();
+    app.sound('tap');
+    if (level === 'new') app.go('lesson', { index: 0, then: 'guided', firstRun: true });
+    else if (level === 'some') app.go('lesson', { quiz: true, firstRun: true });
+    else { app.go('home'); app.toast('推荐你从「中等」开始'); }
+  }
+
+  const CARDS = [
+    { id: 'new', title: '没玩过', sub: '从零开始，1 分钟学会第一步', icon: 'book' },
+    { id: 'some', title: '会一点', sub: '做两道小题，帮你挑难度', icon: 'chart' },
+    { id: 'pro', title: '很熟了', sub: '直接开始，教学留在菜单里', icon: 'medal' },
+  ];
+
+  app.scenes.welcome = {
+    draw(ctx, t) {
+      const th = app.th, W = app.W;
+      let y = app.headerY + 70;
+      ui.text(ctx, '数独', W / 2, y, 40, th.text, 'center', 700);
+      ui.text(ctx, '每行、每列、每宫，1 到 9 各一个', W / 2, y + 42, 14, th.sub, 'center');
+      y += 110;
+      ui.text(ctx, '你玩过数独吗？', W / 2, y, 22, th.text, 'center', 700);
+      y += 34;
+      const h = 92;
+      CARDS.forEach((c, i) => {
+        const cy = y + i * (h + 14);
+        const on = ui.button({ id: 'wel-' + c.id, x: 20, y: cy, w: W - 40, h, onTap: () => choose(c.id) });
+        ctx.save();
+        if (on) { ctx.translate(W / 2, cy + h / 2); ctx.scale(0.98, 0.98); ctx.translate(-W / 2, -cy - h / 2); }
+        ui.card(ctx, 20, cy, W - 40, h, 20, th);
+        if (on) ui.fillRR(ctx, 20, cy, W - 40, h, 20, th.pageDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)');
+        ctx.beginPath(); ctx.arc(64, cy + h / 2, 24, 0, Math.PI * 2); ctx.fillStyle = th.soft; ctx.fill();
+        ui.icons[c.icon](ctx, 64, cy + h / 2, 26, th.primary);
+        ui.text(ctx, c.title, 104, cy + h / 2 - 13, 20, th.text, 'left', 700);
+        ui.text(ctx, c.sub, 104, cy + h / 2 + 15, 13, th.sub);
+        ui.icons.chevron(ctx, W - 44, cy + h / 2, 20, th.faint);
+        ctx.restore();
+      });
+      ui.text(ctx, '选完以后，在「教学」里随时能改', W / 2, app.bottom - 24, 12, th.faint, 'center');
+    },
+  };
+
+  // 小测做完：两题都没错 → 简单；错过 → 入门 + 带练
+  app.quizDone = (misses) => {
+    const good = misses === 0;
+    if (!good) { store.data.level = 'new'; store.save(); }
+    app.sound(good ? 'win' : 'correct');
+    app.push({
+      draw(ctx, t, p) {
+        const th = app.th;
+        const m = app.modal(ctx, p, 268);
+        ctx.beginPath(); ctx.arc(app.W / 2, m.y + 50, 26, 0, Math.PI * 2); ctx.fillStyle = good ? th.ok : th.gold; ctx.fill();
+        ui.icons.check(ctx, app.W / 2, m.y + 50, 30, '#FFFFFF', 3.4);
+        ui.text(ctx, good ? '两题都对！' : '差一点', app.W / 2, m.y + 100, 21, th.text, 'center', 700);
+        ui.text(ctx, good ? '推荐你从「简单」开始' : '推荐从「入门」开始，第一局带着你下', app.W / 2, m.y + 130, 14, th.sub, 'center');
+        const bx = m.x + 20, bw = m.w - 40;
+        ui.pill(ctx, th, 'quiz-go', bx, m.y + 156, bw, 50, good ? '开始「简单」' : '开始「入门」', () => { app.pop(); app.startGame(good ? 1 : 0, good ? {} : { guided: true }); }, 'primary');
+        ui.pill(ctx, th, 'quiz-learn', bx, m.y + 214, bw, 42, '先看教学', () => { app.pop(); app.go('lessons'); }, 'card');
+        m.done();
+      },
+    });
+  };
+
+  // 每升一档，先学一招
+  app.tierGate = (tier, lessonId) => {
+    const L = T.LESSONS.find((x) => x.id === lessonId);
+    app.push({
+      onBackdrop: () => app.pop(),
+      draw(ctx, t, p) {
+        const th = app.th;
+        const m = app.modal(ctx, p, 262);
+        ui.text(ctx, '「' + S.TIERS[tier].name + '」要用一招新的', app.W / 2, m.y + 40, 19, th.text, 'center', 700);
+        ui.fillRR(ctx, m.x + 40, m.y + 64, m.w - 80, 48, 14, th.soft);
+        ui.text(ctx, L.name, app.W / 2, m.y + 88, 20, th.primary, 'center', 700);
+        ui.text(ctx, '1 分钟：看一遍，再自己做一道', app.W / 2, m.y + 132, 13, th.sub, 'center');
+        const bx = m.x + 20, bw = m.w - 40;
+        ui.pill(ctx, th, 'gate-learn', bx, m.y + 152, bw, 50, '先学「' + L.name + '」', () => { app.pop(); app.go('lesson', { id: lessonId, then: { tier } }); }, 'primary');
+        ui.pill(ctx, th, 'gate-skip', bx, m.y + 210, bw, 42, '我会了，直接开始', () => { app.pop(); app.startGame(tier, { skipGate: true }); }, 'card');
+        m.done();
+      },
+    });
   };
 };
 
@@ -3087,7 +3279,7 @@ function lessonLastCell() {
       text: '这次不帮你亮了：盘上有一个宫只差一格，找到它，填上。',
       show: free, focus: null,
       actions: [{ cell: b3 }, { num: SOL[b3] }], says: ['先找：哪一宫只剩一个空格？', '它缺哪个数？'],
-      handDelay: 8000,
+      handDelay: 5000,
     },
   ];
 }
@@ -3170,8 +3362,8 @@ function lessonNaked() {
   ];
 }
 
-// ---------- 第 5 课 · 笔记 ----------
-// X 只剩两种可能 {a, w}；Y 和 X 同一行，Y = w。先在 X 记下 a 和 w，再填 Y = w → X 的笔记 w 自动擦掉 → X 只剩 a
+// ---------- 第 5 课 · 笔记（0.5 砍短：先看效果，再自己记一个）----------
+// X 只剩两种可能 {a, w}，笔记已经记好；Y 和 X 同一行，Y = w。演示填 Y = w → X 的笔记 w 自动擦掉 → X 只剩 a
 function lessonNotes() {
   const X = at(2, 1), Y = at(2, 7);
   const a = SOL[X], w = SOL[Y];
@@ -3179,26 +3371,74 @@ function lessonNotes() {
   const boxW = cellsOf(B(S.BOX(X))).find((k) => SOL[k] === w);
   const hide = uniq([X, Y, colW, boxW].concat(scatter(26, S.PEERS[X].concat([X, Y]))));
   const show = minus(Array.from({ length: 81 }, (_, k) => k), hide);
-  const low = Math.min(a, w), high = Math.max(a, w);
   const focus = cellsOf(R(2)).concat(cellsOf(Cc(S.COL(X))), cellsOf(B(S.BOX(X))));
+  const pre = {};
+  pre[X] = S.bit(a) | S.bit(w);
+  // 第三步自己记：另找一个空格 Z（不在 X 那一行），记下它的正确答案
+  const Z = hide.find((k) => k !== X && k !== Y && S.ROW(k) !== 2);
   return [
+    { text: '格子里的小字叫「笔记」：一时定不下来，就把可能的数先记下。', show, focus, mark: X, notesPre: pre },
+    { text: '同一行填上 ' + w + ' 以后，笔记里的 ' + w + ' 会自己擦掉。', show, focus, notesPre: pre, demo: { k: Y, v: w } },
+    { text: '只剩 ' + a + ' 了，把它填上。', show: show.concat([Y]), focus, mark: X, notesPre: (() => { const o = {}; o[X] = S.bit(a); return o; })(),
+      actions: [{ cell: X }, { num: a }], says: ['点亮着的格子', '填 ' + a] },
+    { text: '你也记一个：打开「笔记」，在亮着的格子里记下 ' + SOL[Z] + '。', show: show.concat([Y, X]), focus: null, mark: Z, noteTool: true,
+      actions: [{ note: true }, { cell: Z }, { num: SOL[Z] }], says: ['点「笔记」，打开它', '点亮着的格子', '点 ' + SOL[Z] + '，它会变成小字'] },
+  ];
+}
+
+// ---------- 第 6 课 · 区块排除（中等要用）----------
+// 宫 A 里的 v 只能在 r 这一排 → 这一排的别处都不能是 v → 宫 B 里的 v 只剩一格
+function lessonPointing() {
+  const v = SOL[at(0, 0)]; // 用左上角那个数
+  const rA = 0; // A = 左上宫，v 在第 0 排
+  const kB = cellsOf(B(1)).find((k) => SOL[k] === v); // B = 上中宫
+  const kC = cellsOf(B(2)).find((k) => SOL[k] === v); // C = 右上宫
+  const rB = S.ROW(kB);
+  // 宫 A 另外两排填满 → v 只能在第 0 排
+  const fillA = cellsOf(B(0)).filter((k) => S.ROW(k) !== rA);
+  // 宫 B：v 那一排的另外两格填上；C 的 v 显示出来挡住它那一排
+  const fillB = cellsOf(B(1)).filter((k) => S.ROW(k) === rB && k !== kB);
+  const zone = cellsOf(B(0)).filter((k) => S.ROW(k) === rA);
+  const avoidV = (ks) => ks.filter((k) => SOL[k] !== v);
+  const base = avoidV(scatter(14, cellsOf(B(0)).concat(cellsOf(B(1)), cellsOf(B(2)), cellsOf(R(0)), cellsOf(R(1)), cellsOf(R(2)))));
+  const show = uniq(base.concat(fillA, fillB, [kC]));
+  const focus = cellsOf(B(0)).concat(cellsOf(B(1)), cellsOf(B(2)));
+  const rowRay = [{ k: zone[0], dir: 'row' }];
+  const rowCRay = [{ k: kC, dir: 'row' }];
+  return [
+    { text: '看左上这一宫：' + v + ' 还没放，下面两排都满了，' + v + ' 只能在最上面这一排（金色）。', show, focus, zone },
+    { text: v + ' 一定在这一排的金色格子里——那这一排的其他格子，就都不能是 ' + v + ' 了。', show, focus, zone, rays: rowRay },
     {
-      text: '有的格子一时定不下来。亮着的这一格可能是 ' + low + '，也可能是 ' + high + '。用「笔记」把它们记下来。',
-      show, focus, mark: X, noteTool: true,
-      actions: [{ note: true }, { cell: X }, { num: low }, { num: high }],
-      says: ['点「笔记」，打开它', '点亮着的格子', '点 ' + low + '，记下来', '再点 ' + high],
+      text: '中间这一宫的 ' + v + ' 放在哪？（右上宫的 ' + v + ' 也挡住了一排）',
+      show, focus, zone, rays: rowRay.concat(rowCRay),
+      actions: [{ cell: kB }, { num: v }], says: ['上面一排不行、' + v + ' 那一排不行……剩哪一格？', '填 ' + v],
     },
-    {
-      text: '现在关掉笔记，在同一行的这一格填 ' + w + '。看看左边的笔记会怎样。',
-      show, focus, mark: Y, noteTool: true,
-      actions: [{ note: false }, { cell: Y }, { num: w }],
-      says: ['点「笔记」，关掉它', '点这一格', '填 ' + w],
-    },
-    {
-      text: '笔记里的 ' + w + ' 自动擦掉了（同一行不能再有 ' + w + '）。只剩 ' + a + '，把它填上。',
-      show, focus, mark: X, noteTool: true,
-      actions: [{ cell: X }, { num: a }], says: ['点那一格', '填 ' + a],
-    },
+  ];
+}
+
+// ---------- 第 7 课 · 数对（困难要用）----------
+// 一排里只剩三个空：两格只能是 {a,b}，第三格本来是 {a,b,c} → a、b 被那两格「包了」→ 第三格只能是 c
+function lessonPair() {
+  const R0 = 4;
+  const row = cellsOf(R(R0));
+  const p = row[1], q = row[4], t = row[7];
+  const a = SOL[p], b = SOL[q], c = SOL[t];
+  // p、q 要看得到 c（同列里显示 c）；t 不能看到 a、b
+  const cInCol = (k) => cellsOf(Cc(S.COL(k))).find((x) => SOL[x] === c);
+  const blockers = [cInCol(p), cInCol(q)];
+  const avoid = row.concat(cellsOf(Cc(S.COL(t))), cellsOf(B(S.BOX(t))));
+  const base = scatter(16, avoid.concat(blockers)).filter((k) => SOL[k] !== a && SOL[k] !== b || (S.COL(k) !== S.COL(t) && S.BOX(k) !== S.BOX(t)));
+  const show = uniq(minus(row, [p, q, t]).concat(blockers, base));
+  const focus = row.concat(blockers);
+  const pre = {};
+  pre[p] = S.bit(a) | S.bit(b); pre[q] = S.bit(a) | S.bit(b); pre[t] = S.bit(a) | S.bit(b) | S.bit(c);
+  const strike = {}; strike[t] = S.bit(a) | S.bit(b);
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  return [
+    { text: '这一排只剩三个空。左边两格都只能是 ' + lo + ' 或 ' + hi + '（它们那一列已经有 ' + c + ' 了）。', show, focus, notesPre: pre, zone: [p, q] },
+    { text: lo + ' 和 ' + hi + ' 被这两格「包了」：不管谁是谁，这一排的别处都不能再是 ' + lo + '、' + hi + '。这叫「数对」。', show, focus, notesPre: pre, zone: [p, q], strikeNotes: strike },
+    { text: '那右边这一格只能是几？', show, focus, notesPre: pre, zone: [p, q], strikeNotes: strike, mark: t,
+      actions: [{ cell: t }, { num: c }], says: ['点右边那一格', '划掉 ' + lo + '、' + hi + ' 以后，只剩哪个？'] },
   ];
 }
 
@@ -3208,11 +3448,25 @@ const LESSONS = [
   { id: 'hatch', name: '排除法', sub: '别处的数把行和列划掉', build: lessonHatch },
   { id: 'naked', name: '唯一候选', sub: '这一格只剩一种可能', build: lessonNaked },
   { id: 'notes', name: '笔记', sub: '记下可能的数，会自动擦', build: lessonNotes },
+  { id: 'pointing', name: '区块排除', sub: '中等要用：一宫里的数挤在一排', build: lessonPointing, tier: 2 },
+  { id: 'pair', name: '数对', sub: '困难要用：两格包了两个数', build: lessonPair, tier: 3 },
 ];
+// 每一档第一次玩之前要先会的那一课（「每升一档，先学一招」）
+const TIER_LESSON = { 2: 'pointing', 3: 'pair' };
 // 提示里用到的招 → 去哪一课学
-const TECH_LESSON = { fullHouse: 'last', hiddenBox: 'hatch', hiddenLine: 'hatch', nakedSingle: 'naked' };
+const TECH_LESSON = { fullHouse: 'last', hiddenBox: 'hatch', hiddenLine: 'hatch', nakedSingle: 'naked', pointing: 'pointing', claiming: 'pointing', nakedPair: 'pair', hiddenPair: 'pair' };
 
-module.exports = { SOL, LESSONS, TECH_LESSON };
+// 「会一点」的人做的两道小测：从排除法、唯一候选两课里各拿一道练习
+function quizSteps() {
+  const h = lessonHatch(), n = lessonNaked();
+  // 小测不主动给手指（点错一次才出来），不然等于把答案告诉他
+  return [
+    Object.assign({}, h[3], { text: '第 1 题：' + h[3].text.replace('轮到你：', ''), handDelay: 1e9 }),
+    Object.assign({}, n[2], { text: '第 2 题：亮着的这一格只能填几？', handDelay: 1e9 }),
+  ];
+}
+
+module.exports = { SOL, LESSONS, TECH_LESSON, TIER_LESSON, quizSteps };
 
 });
 __def("js/ui.js", function (module, exports, require) {

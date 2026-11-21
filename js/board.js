@@ -10,9 +10,11 @@ function create(opts) {
     mode: opts.mode || 'normal', tier: opts.tier || 0, idx: opts.idx || 0, date: opts.date || '',
     puzzle: opts.puzzle, sol: sol.join(''),
     vals: puzzle.slice(), given: puzzle.map(Boolean), notes: new Array(81).fill(0),
-    mistakes: 0, elapsed: 0, score: 0, hintsLeft: C.RULES.freeHints, hintsUsed: 0,
+    mistakes: 0, elapsed: 0, score: 0, hintsLeft: opts.guided ? 99 : C.RULES.freeHints, hintsUsed: 0,
     scored: new Array(81).fill(false), missed: new Array(81).fill(false), lastCorrectAt: 0,
     history: [], done: false, lost: false, revives: 0, selected: -1,
+    // 带练局（新人第一局）：前 guideLeft 步手指带着走，提示不限次数
+    guided: !!opts.guided, guideLeft: opts.guided ? 3 : 0,
   };
 }
 

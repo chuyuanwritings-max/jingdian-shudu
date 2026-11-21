@@ -149,6 +149,11 @@ function draw(ctx, th, geo, m, dpr) {
       ctx.fillRect(r.x, r.y, cs + 0.5, cs + 0.5);
     }
   }
+  // 教学：金色区域（「v 只能在这几格」「这两格是一对」）
+  if (m.zone) {
+    ctx.fillStyle = Paper.rgba(th.gold, dk ? 0.3 : 0.28);
+    for (const k of m.zone) { const r = cellRect(geo, k); ctx.fillRect(r.x, r.y, cs + 0.5, cs + 0.5); }
+  }
   // 教学：被「划掉」的行列（淡红带）
   if (m.rays) {
     ctx.fillStyle = th.wrong;
@@ -207,10 +212,29 @@ function draw(ctx, th, geo, m, dpr) {
         if (!(m.notes[k] & S.bit(d))) continue;
         const nx = r.x + ((d - 1) % 3 + 0.5) * cs / 3, ny = r.y + (Math.floor((d - 1) / 3) + 0.5) * cs / 3;
         if (digit === d && m.sameHighlight !== false) ui.fillRR(ctx, nx - cs / 7, ny - cs / 7, cs / 3.5, cs / 3.5, 3, HL.same);
-        ui.text(ctx, String(d), nx + ox, ny + 0.5, ns, digit === d ? th.text : th.note, 'center', digit === d ? 600 : 400);
+        const struck = m.strikeNotes && m.strikeNotes[k] && m.strikeNotes[k] & S.bit(d);
+        ui.text(ctx, String(d), nx + ox, ny + 0.5, ns, struck ? th.faint : digit === d ? th.text : th.note, 'center', digit === d ? 600 : 400);
+        if (struck) { ctx.strokeStyle = th.wrong; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(nx - ns * 0.45, ny + ns * 0.4); ctx.lineTo(nx + ns * 0.45, ny - ns * 0.4); ctx.stroke(); }
       }
     }
     ctx.globalAlpha = 1;
+  }
+  // 教学：从挡住它的那个数拉一条红线穿过整排 / 整列，起点一个圆点
+  if (m.rays) {
+    ctx.save();
+    ctx.strokeStyle = Paper.rgba(th.wrong, 0.7);
+    ctx.fillStyle = Paper.rgba(th.wrong, 0.85);
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 5]);
+    for (const ray of m.rays) {
+      const r = cellRect(geo, ray.k), cx = r.x + cs / 2, cy = r.y + cs / 2;
+      ctx.beginPath();
+      if (ray.dir === 'row') { ctx.moveTo(geo.x + 4, cy); ctx.lineTo(geo.x + geo.size - 4, cy); }
+      else { ctx.moveTo(cx, geo.y + 4); ctx.lineTo(cx, geo.y + geo.size - 4); }
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, cs * 0.42, 0, Math.PI * 2); ctx.setLineDash([]); ctx.lineWidth = 2.5; ctx.stroke(); ctx.setLineDash([6, 5]); ctx.lineWidth = 2;
+    }
+    ctx.restore();
   }
   // 教学：标一格（呼吸的框）
   if (m.mark >= 0 && m.mark !== undefined) {

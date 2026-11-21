@@ -63,7 +63,7 @@ function lessonLastCell() {
       text: '这次不帮你亮了：盘上有一个宫只差一格，找到它，填上。',
       show: free, focus: null,
       actions: [{ cell: b3 }, { num: SOL[b3] }], says: ['先找：哪一宫只剩一个空格？', '它缺哪个数？'],
-      handDelay: 8000,
+      handDelay: 5000,
     },
   ];
 }
@@ -146,8 +146,8 @@ function lessonNaked() {
   ];
 }
 
-// ---------- 第 5 课 · 笔记 ----------
-// X 只剩两种可能 {a, w}；Y 和 X 同一行，Y = w。先在 X 记下 a 和 w，再填 Y = w → X 的笔记 w 自动擦掉 → X 只剩 a
+// ---------- 第 5 课 · 笔记（0.5 砍短：先看效果，再自己记一个）----------
+// X 只剩两种可能 {a, w}，笔记已经记好；Y 和 X 同一行，Y = w。演示填 Y = w → X 的笔记 w 自动擦掉 → X 只剩 a
 function lessonNotes() {
   const X = at(2, 1), Y = at(2, 7);
   const a = SOL[X], w = SOL[Y];
@@ -155,26 +155,74 @@ function lessonNotes() {
   const boxW = cellsOf(B(S.BOX(X))).find((k) => SOL[k] === w);
   const hide = uniq([X, Y, colW, boxW].concat(scatter(26, S.PEERS[X].concat([X, Y]))));
   const show = minus(Array.from({ length: 81 }, (_, k) => k), hide);
-  const low = Math.min(a, w), high = Math.max(a, w);
   const focus = cellsOf(R(2)).concat(cellsOf(Cc(S.COL(X))), cellsOf(B(S.BOX(X))));
+  const pre = {};
+  pre[X] = S.bit(a) | S.bit(w);
+  // 第三步自己记：另找一个空格 Z（不在 X 那一行），记下它的正确答案
+  const Z = hide.find((k) => k !== X && k !== Y && S.ROW(k) !== 2);
   return [
+    { text: '格子里的小字叫「笔记」：一时定不下来，就把可能的数先记下。', show, focus, mark: X, notesPre: pre },
+    { text: '同一行填上 ' + w + ' 以后，笔记里的 ' + w + ' 会自己擦掉。', show, focus, notesPre: pre, demo: { k: Y, v: w } },
+    { text: '只剩 ' + a + ' 了，把它填上。', show: show.concat([Y]), focus, mark: X, notesPre: (() => { const o = {}; o[X] = S.bit(a); return o; })(),
+      actions: [{ cell: X }, { num: a }], says: ['点亮着的格子', '填 ' + a] },
+    { text: '你也记一个：打开「笔记」，在亮着的格子里记下 ' + SOL[Z] + '。', show: show.concat([Y, X]), focus: null, mark: Z, noteTool: true,
+      actions: [{ note: true }, { cell: Z }, { num: SOL[Z] }], says: ['点「笔记」，打开它', '点亮着的格子', '点 ' + SOL[Z] + '，它会变成小字'] },
+  ];
+}
+
+// ---------- 第 6 课 · 区块排除（中等要用）----------
+// 宫 A 里的 v 只能在 r 这一排 → 这一排的别处都不能是 v → 宫 B 里的 v 只剩一格
+function lessonPointing() {
+  const v = SOL[at(0, 0)]; // 用左上角那个数
+  const rA = 0; // A = 左上宫，v 在第 0 排
+  const kB = cellsOf(B(1)).find((k) => SOL[k] === v); // B = 上中宫
+  const kC = cellsOf(B(2)).find((k) => SOL[k] === v); // C = 右上宫
+  const rB = S.ROW(kB);
+  // 宫 A 另外两排填满 → v 只能在第 0 排
+  const fillA = cellsOf(B(0)).filter((k) => S.ROW(k) !== rA);
+  // 宫 B：v 那一排的另外两格填上；C 的 v 显示出来挡住它那一排
+  const fillB = cellsOf(B(1)).filter((k) => S.ROW(k) === rB && k !== kB);
+  const zone = cellsOf(B(0)).filter((k) => S.ROW(k) === rA);
+  const avoidV = (ks) => ks.filter((k) => SOL[k] !== v);
+  const base = avoidV(scatter(14, cellsOf(B(0)).concat(cellsOf(B(1)), cellsOf(B(2)), cellsOf(R(0)), cellsOf(R(1)), cellsOf(R(2)))));
+  const show = uniq(base.concat(fillA, fillB, [kC]));
+  const focus = cellsOf(B(0)).concat(cellsOf(B(1)), cellsOf(B(2)));
+  const rowRay = [{ k: zone[0], dir: 'row' }];
+  const rowCRay = [{ k: kC, dir: 'row' }];
+  return [
+    { text: '看左上这一宫：' + v + ' 还没放，下面两排都满了，' + v + ' 只能在最上面这一排（金色）。', show, focus, zone },
+    { text: v + ' 一定在这一排的金色格子里——那这一排的其他格子，就都不能是 ' + v + ' 了。', show, focus, zone, rays: rowRay },
     {
-      text: '有的格子一时定不下来。亮着的这一格可能是 ' + low + '，也可能是 ' + high + '。用「笔记」把它们记下来。',
-      show, focus, mark: X, noteTool: true,
-      actions: [{ note: true }, { cell: X }, { num: low }, { num: high }],
-      says: ['点「笔记」，打开它', '点亮着的格子', '点 ' + low + '，记下来', '再点 ' + high],
+      text: '中间这一宫的 ' + v + ' 放在哪？（右上宫的 ' + v + ' 也挡住了一排）',
+      show, focus, zone, rays: rowRay.concat(rowCRay),
+      actions: [{ cell: kB }, { num: v }], says: ['上面一排不行、' + v + ' 那一排不行……剩哪一格？', '填 ' + v],
     },
-    {
-      text: '现在关掉笔记，在同一行的这一格填 ' + w + '。看看左边的笔记会怎样。',
-      show, focus, mark: Y, noteTool: true,
-      actions: [{ note: false }, { cell: Y }, { num: w }],
-      says: ['点「笔记」，关掉它', '点这一格', '填 ' + w],
-    },
-    {
-      text: '笔记里的 ' + w + ' 自动擦掉了（同一行不能再有 ' + w + '）。只剩 ' + a + '，把它填上。',
-      show, focus, mark: X, noteTool: true,
-      actions: [{ cell: X }, { num: a }], says: ['点那一格', '填 ' + a],
-    },
+  ];
+}
+
+// ---------- 第 7 课 · 数对（困难要用）----------
+// 一排里只剩三个空：两格只能是 {a,b}，第三格本来是 {a,b,c} → a、b 被那两格「包了」→ 第三格只能是 c
+function lessonPair() {
+  const R0 = 4;
+  const row = cellsOf(R(R0));
+  const p = row[1], q = row[4], t = row[7];
+  const a = SOL[p], b = SOL[q], c = SOL[t];
+  // p、q 要看得到 c（同列里显示 c）；t 不能看到 a、b
+  const cInCol = (k) => cellsOf(Cc(S.COL(k))).find((x) => SOL[x] === c);
+  const blockers = [cInCol(p), cInCol(q)];
+  const avoid = row.concat(cellsOf(Cc(S.COL(t))), cellsOf(B(S.BOX(t))));
+  const base = scatter(16, avoid.concat(blockers)).filter((k) => SOL[k] !== a && SOL[k] !== b || (S.COL(k) !== S.COL(t) && S.BOX(k) !== S.BOX(t)));
+  const show = uniq(minus(row, [p, q, t]).concat(blockers, base));
+  const focus = row.concat(blockers);
+  const pre = {};
+  pre[p] = S.bit(a) | S.bit(b); pre[q] = S.bit(a) | S.bit(b); pre[t] = S.bit(a) | S.bit(b) | S.bit(c);
+  const strike = {}; strike[t] = S.bit(a) | S.bit(b);
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  return [
+    { text: '这一排只剩三个空。左边两格都只能是 ' + lo + ' 或 ' + hi + '（它们那一列已经有 ' + c + ' 了）。', show, focus, notesPre: pre, zone: [p, q] },
+    { text: lo + ' 和 ' + hi + ' 被这两格「包了」：不管谁是谁，这一排的别处都不能再是 ' + lo + '、' + hi + '。这叫「数对」。', show, focus, notesPre: pre, zone: [p, q], strikeNotes: strike },
+    { text: '那右边这一格只能是几？', show, focus, notesPre: pre, zone: [p, q], strikeNotes: strike, mark: t,
+      actions: [{ cell: t }, { num: c }], says: ['点右边那一格', '划掉 ' + lo + '、' + hi + ' 以后，只剩哪个？'] },
   ];
 }
 
@@ -184,8 +232,22 @@ const LESSONS = [
   { id: 'hatch', name: '排除法', sub: '别处的数把行和列划掉', build: lessonHatch },
   { id: 'naked', name: '唯一候选', sub: '这一格只剩一种可能', build: lessonNaked },
   { id: 'notes', name: '笔记', sub: '记下可能的数，会自动擦', build: lessonNotes },
+  { id: 'pointing', name: '区块排除', sub: '中等要用：一宫里的数挤在一排', build: lessonPointing, tier: 2 },
+  { id: 'pair', name: '数对', sub: '困难要用：两格包了两个数', build: lessonPair, tier: 3 },
 ];
+// 每一档第一次玩之前要先会的那一课（「每升一档，先学一招」）
+const TIER_LESSON = { 2: 'pointing', 3: 'pair' };
 // 提示里用到的招 → 去哪一课学
-const TECH_LESSON = { fullHouse: 'last', hiddenBox: 'hatch', hiddenLine: 'hatch', nakedSingle: 'naked' };
+const TECH_LESSON = { fullHouse: 'last', hiddenBox: 'hatch', hiddenLine: 'hatch', nakedSingle: 'naked', pointing: 'pointing', claiming: 'pointing', nakedPair: 'pair', hiddenPair: 'pair' };
 
-module.exports = { SOL, LESSONS, TECH_LESSON };
+// 「会一点」的人做的两道小测：从排除法、唯一候选两课里各拿一道练习
+function quizSteps() {
+  const h = lessonHatch(), n = lessonNaked();
+  // 小测不主动给手指（点错一次才出来），不然等于把答案告诉他
+  return [
+    Object.assign({}, h[3], { text: '第 1 题：' + h[3].text.replace('轮到你：', ''), handDelay: 1e9 }),
+    Object.assign({}, n[2], { text: '第 2 题：亮着的这一格只能填几？', handDelay: 1e9 }),
+  ];
+}
+
+module.exports = { SOL, LESSONS, TECH_LESSON, TIER_LESSON, quizSteps };

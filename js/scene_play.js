@@ -15,6 +15,7 @@ module.exports = function (app) {
   let noteMode = false, paused = false;
   let fx = null; // 效果：{ pops, rings, flash, shake, floats }
   let hint = null; // { h, t0 }
+  let guide = null; // 带练：{ h, t0 } 手指指着下一步
   let winAt = 0, saveTimer = 0, lastSec = -1;
   const geo = { x: 0, y: 0, size: 0 };
   let L = null; // 布局
@@ -42,6 +43,15 @@ module.exports = function (app) {
   // ---------- 开局 / 继续 ----------
   app.startGame = (tier, opts) => {
     opts = opts || {};
+    // 每升一档，先学一招：第一次玩「中等」「困难」前，问一句要不要先花 1 分钟学这一档的新招
+    const need = T.TIER_LESSON[tier];
+    if (need && !opts.skipGate && !opts.guided && (opts.mode || 'normal') === 'normal' && !store.data.lessons[need] && !(store.data.gateSeen || {})[tier]) {
+      store.data.gateSeen = store.data.gateSeen || {};
+      store.data.gateSeen[tier] = true;
+      store.save();
+      app.tierGate(tier, need);
+      return;
+    }
     let idx, mode = opts.mode || 'normal';
     if (mode === 'daily') idx = opts.idx;
     else {
@@ -50,7 +60,7 @@ module.exports = function (app) {
       store.data.next[tier] = (idx + 1) % half;
     }
     store.startGame(tier, mode);
-    const nb = Board.create({ mode, tier, idx, date: opts.date, puzzle: bank[tier][idx] });
+    const nb = Board.create({ mode, tier, idx, date: opts.date, puzzle: bank[tier][idx], guided: opts.guided });
     store.data.current = nb;
     store.save();
     app.go('play', { board: nb });
@@ -96,6 +106,11 @@ module.exports = function (app) {
   }
   function onCorrect(k, v, r, t) {
     hint = null;
+    if (b.guided && b.guideLeft > 0) {
+      b.guideLeft--;
+      guide = null;
+      if (b.guideLeft === 0) setTimeout(() => app.toast('接下来你自己来！\n卡住了就点「提示」，这一局不限次数', 2800), 500);
+    }
     fx.pops[k] = t;
     fx.rings.push({ k, t0: t });
     if (r.gain) fx.floats.push({ k, t0: t + 120, text: '+' + r.gain });
@@ -249,6 +264,27 @@ module.exports = function (app) {
     ui.text(ctx, String(b.score), W / 2, y, 17, th.text, 'center', 700);
     if (store.data.settings.showTimer !== false) ui.text(ctx, app.fmt(b.elapsed), W - 20, y, 14, th.text, 'right', 500);
   }
+  // 带练：卡片上一行字说为什么，手指先指格子、选中以后指数字键
+  function drawGuide(ctx, th, t) {
+    if (!guide) {
+      const h = Board.findHint(b);
+      if (!h) return;
+      const tech = h.step && h.step.tech;
+      guide = { h, t0: t, cells: h.step ? (tech === 'nakedSingle' ? [h.place.k] : h.step.focus || h.step.cells) : [h.place.k] };
+    }
+    const g = guide, k = g.h.place.k, v = g.h.place.v;
+    const p = Math.min(1, (t - g.t0) / 220);
+    const x = 12, w = app.W - 24, hh = 64;
+    const y = (hintBelow ? geo.y + geo.size + 10 : L.toolsY + L.toolsH - hh) + (1 - ui.ease.out(p)) * 10;
+    ctx.save();
+    ctx.globalAlpha = p;
+    ui.card(ctx, x, y, w, hh, 14, th);
+    ui.text(ctx, '第 ' + (4 - b.guideLeft) + ' / 3 步', x + 16, y + 18, 12, th.primary, 'left', 700);
+    ui.wrap(ctx, g.h.text.replace(/^[^：]*：/, ''), x + 16, y + 30, w - 32, 13, 17, th.text);
+    ctx.restore();
+    const target = b.selected === k ? { x: 8 + (v - 0.5) * L.keyW, y: L.padY + L.padH / 2 } : (() => { const r = DB.cellRect(geo, k); return { x: r.x + r.s / 2, y: r.y + r.s / 2 }; })();
+    ui.icons.hand(ctx, target.x + 4, target.y + 6 + Math.sin(t / 220) * 5, 44, th.text);
+  }
   function drawHintCard(ctx, th, t) {
     const p = Math.min(1, (t - hint.t0) / 220);
     const x = 12, w = app.W - 24, h = 64;
@@ -334,7 +370,7 @@ module.exports = function (app) {
   app.scenes.play = {
     enter(args) {
       b = args.board;
-      noteMode = false; paused = false; hint = null; winAt = 0; party = null;
+      noteMode = false; paused = false; hint = null; winAt = 0; party = null; guide = null;
       resetFx();
       layout();
     },
@@ -349,7 +385,7 @@ module.exports = function (app) {
       saveTimer += dt;
       if (saveTimer > 3000) { saveTimer = 0; persist(); }
     },
-    live: (t) => !!party || (!!hint && t - hint.t0 < 400),
+    live: (t) => !!party || (!!hint && t - hint.t0 < 400) || (!!b && b.guided && b.guideLeft > 0),
     draw(ctx, t) {
       const th = app.th;
       const tierName = S.TIERS[b.tier].name;
@@ -367,7 +403,7 @@ module.exports = function (app) {
       DB.draw(ctx, th, geo, {
         vals: b.vals, given: b.given, notes: b.notes, wrong: (k) => Board.isWrong(b, k),
         selected: b.selected, sameHighlight: store.data.settings.sameHighlight,
-        hintCells: hint ? hint.cells : null,
+        hintCells: hint ? hint.cells : guide && b.guideLeft > 0 ? guide.cells : null,
         pops: fx.pops, rings: fx.rings, flash: fx.flash, shake: fx.shake, hops: fx.hops, now: t, tileStyle: store.data.settings.tileStyle,
       }, app.dpr);
       if (paused) {
@@ -396,6 +432,7 @@ module.exports = function (app) {
       ]);
       app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone });
       if (hint) drawHintCard(ctx, th, t);
+      else if (b.guided && b.guideLeft > 0 && !winAt && !paused) drawGuide(ctx, th, t);
       if (party) {
         drawParty(ctx, th, t);
         ui.button({ id: 'party-skip', x: 0, y: 0, w: app.W, h: app.H, onTap: endParty }); // 点一下跳过
@@ -410,6 +447,7 @@ module.exports = function (app) {
     padCenter: (v) => ({ x: 8 + (v - 0.5) * L.keyW, y: L.padY + L.padH / 2 }),
     toolCenter: (i) => ({ x: 8 + (i + 0.5) * ((app.W - 16) / 4), y: L.toolsY + L.toolsH / 2 }),
     hint: () => hint,
+    guide: () => guide,
     noteMode: () => noteMode,
   };
 };

@@ -35,38 +35,64 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   };
 
   // ---------- 1. 第一次打开 = 第 1 课 ----------
-  ok((await scene()) === 'lesson', '第一次打开直接进教学第 1 课');
-  await shot('01_第一次打开_第1课');
-
-  // ---------- 2. 五课全部点着学完 ----------
-  for (let li = 0; li < 5; li++) {
-    let guard = 0;
-    while (guard++ < 40) {
-      const st = await ev(() => { const L = window.__app.lessonHooks.state(); const s = L.steps[L.si]; return { si: L.si, n: L.steps.length, ai: L.ai, ok: L.ok, actions: s.actions || null, demo: !!s.demo, idx: L.index }; });
+  // 一课从头点到尾（演示步等动画、练习步照答案点），shots：{ 'si,ai': 名字 } 在那一刻截图
+  async function runLesson(shots) {
+    for (let guard = 0; guard < 50; guard++) {
+      const st = await ev(() => { const L = window.__app.lessonHooks.state(); const s = L.steps[L.si]; return { si: L.si, ai: L.ai, ok: L.ok, actions: s.actions || null, demo: !!s.demo }; });
+      const key = st.si + ',' + (st.actions && !st.ok ? st.ai : 'end');
+      if (shots && shots[key]) { await page.waitForTimeout(st.demo ? 1700 : 150); await shot(shots[key]); delete shots[key]; }
       if (st.actions && !st.ok) {
         const a = st.actions[st.ai];
         if (a.cell !== undefined) await click(await ev((k) => window.__app.lessonHooks.cellCenter(k), a.cell), 120);
         else if (a.num !== undefined) await click(await ev((v) => window.__app.lessonHooks.padCenter(v), a.num), 120);
         else await click(await ev(() => window.__app.lessonHooks.noteCenter()), 120);
-        if (li === 2 && st.si === 3 && st.ai === 0) await shot('03_第3课_排除法练习');
-        if (li === 4 && st.si === 1 && st.ai === 1) await shot('05_第5课_笔记');
         continue;
       }
       if (st.demo) await page.waitForTimeout(1700);
-      if (li === 2 && st.si === 1) await shot('02_第3课_排除法_划掉行列');
-      if (li === 3 && st.si === 1) await shot('04_第4课_唯一候选');
-      if (li === 4 && st.si === 2 && st.ok) await shot('06_第5课_笔记自动擦掉后填对');
       await tap('lnext', 300);
-      if ((await ev(() => window.__app.overlays.length)) > 0) break;
+      if ((await ev(() => window.__app.overlays.length)) > 0) return true;
     }
-    if (li === 4) await shot('07_五课学完');
-    const okDone = await ev((i) => !!window.__store.data.lessons[['rules', 'last', 'hatch', 'naked', 'notes'][i]], li);
-    ok(okDone, '第 ' + (li + 1) + ' 课学完');
-    if (li < 4) await tap('lf-next', 400);
-    else await tap('lf-list', 400);
+    return false;
+  }
+
+  // ---------- 1. 第一次打开：先问你是什么级别 ----------
+  ok((await scene()) === 'welcome', '第一次打开先问「你玩过数独吗？」');
+  await shot('01_第一次打开_选级别');
+  await tap('wel-new', 400);
+  ok((await scene()) === 'lesson', '选「没玩过」→ 第 1 课规则');
+  await runLesson({ '0,end': '02_没玩过_第1课规则' });
+  await shot('03_规则学完_开始带练');
+  await tap('lf-guided', 600);
+  let gb = await ev(() => { const b = window.__app.testHooks.board(); return { guided: b.guided, left: b.guideLeft, tier: b.tier }; });
+  ok(gb.guided && gb.left === 3 && gb.tier === 0, '学完规则 → 入门带练局（前 3 步带着走）');
+  for (let i = 0; i < 3; i++) {
+    await page.waitForTimeout(250);
+    const g = await ev(() => { const x = window.__app.testHooks.guide(); return x ? { k: x.h.place.k, v: x.h.place.v } : null; });
+    if (!g) break;
+    if (i === 0) await shot('04_带练_手指指格子');
+    await click(await ev((k) => window.__app.testHooks.cellCenter(k), g.k), 150);
+    if (i === 0) await shot('05_带练_手指指数字');
+    await click(await ev((v) => window.__app.testHooks.padCenter(v), g.v), 200);
+  }
+  gb = await ev(() => { const b = window.__app.testHooks.board(); return { left: b.guideLeft, hints: b.hintsLeft }; });
+  ok(gb.left === 0 && gb.hints >= 90, '带练 3 步走完，之后提示不限次数');
+  await page.waitForTimeout(600);
+  await shot('06_带练走完_自己来');
+  await tap('hdr-back', 400);
+
+  // ---------- 2. 其余六课（含新加的区块排除、数对）----------
+  await tap('home-lessons', 400);
+  await shot('07_教学目录');
+  const LESSON_SHOTS = { 2: { '1,end': '08_排除法_红线讲因果' }, 3: { '1,end': '09_唯一候选' }, 4: { '1,end': '10_笔记_自动擦掉' }, 5: { '1,end': '11_区块排除', '2,0': '12_区块排除_练习' }, 6: { '1,end': '13_数对', '2,0': '14_数对_练习' } };
+  for (let li = 1; li < 7; li++) {
+    await tap('lesson-' + li, 400);
+    await runLesson(LESSON_SHOTS[li]);
+    const id = ['rules', 'last', 'hatch', 'naked', 'notes', 'pointing', 'pair'][li];
+    ok(await ev((x) => !!window.__store.data.lessons[x], id), '第 ' + (li + 1) + ' 课学完（' + id + '）');
+    await tap('lf-list', 400);
   }
   ok((await scene()) === 'lessons', '学完回到教学目录');
-  await shot('08_教学目录_全打勾');
+  await shot('15_教学目录_七课打勾');
 
   // ---------- 3. 首页、练脑、设置 ----------
   await tap('hdr-back', 400);
@@ -198,10 +224,17 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await ev(() => { window.__store.data.settings.theme = 'paper'; window.__store.save(); });
 
   // 简单、中等、困难：结算页「再来一局」→ 从首页选
+  await ev(() => { window.__store.data.lessons.pointing = false; window.__store.data.gateSeen = {}; });
   for (const [ti, name] of [[1, '简单'], [2, '中等'], [3, '困难']]) {
     await tap('res-home', 400);
     await tap('home-new', 400);
+    if (ti === 2) await shot('16_选难度_推荐和新招');
     await tap('tier-' + ti, 600);
+    if (ti === 2) {
+      ok((await ev(() => window.__app.overlays.length)) === 1, '第一次玩「中等」：先问要不要学「区块排除」');
+      await shot('17_中等_先学一招');
+      await tap('gate-skip', 600);
+    }
     const r = await solve(name, ti === 3 ? '24_困难' : null);
     ok(r === 'result', name + ' 用真点击解完 → 结算');
   }
@@ -253,7 +286,17 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await shot('30_好友榜_浏览器里');
   ok((await scene()) === 'rank', '好友榜页能打开');
 
-  // ---------- 8. 速度：点下去到画面变 ----------
+  // ---------- 8. 「会一点」：两道小测 → 推荐难度 ----------
+  await ev(() => { window.__store.data.seen.tutorial = false; window.__app.go('welcome'); });
+  await page.waitForTimeout(300);
+  await tap('wel-some', 400);
+  ok(await ev(() => window.__app.lessonHooks.state().quiz), '选「会一点」→ 两道小测');
+  await runLesson({ '0,0': '18_会一点_小测' });
+  await shot('19_小测_推荐难度');
+  await tap('quiz-go', 600);
+  ok((await ev(() => window.__app.testHooks.board().tier)) === 1, '两题都对 → 推荐「简单」开局');
+
+  // ---------- 9. 没有报错 ----------
   ok(errors.length === 0, '没有报错' + (errors.length ? '：' + errors.slice(0, 3).join(' | ') : ''));
   console.log('\n' + pass + ' 项通过，' + fail + ' 项没过');
   await browser.close();
