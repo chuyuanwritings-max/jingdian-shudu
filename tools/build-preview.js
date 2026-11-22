@@ -5,13 +5,20 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
+
+// 界面布局：原型/layout.json（编辑器存的）→ 生成 js/layout_data.js（微信包里游戏读它）。
+// 测试时可以用环境变量 LAYOUT_JSON 换一份布局、OUT 换输出文件，这时不动真文件。
+const layoutSrc = process.env.LAYOUT_JSON || path.join(root, 'layout.json');
+const layoutData = fs.existsSync(layoutSrc) ? JSON.parse(fs.readFileSync(layoutSrc, 'utf8')) : { version: 1, elements: {} };
+const layoutJs = '// 自动生成，别手改：改 原型/layout.json（或用界面编辑器），再跑 node tools/build-preview.js\nmodule.exports = ' + JSON.stringify(layoutData, null, 2) + ';\n';
+if (!process.env.LAYOUT_JSON) fs.writeFileSync(path.join(root, 'js', 'layout_data.js'), layoutJs);
 const files = ['game.js'].concat(
   fs.readdirSync(path.join(root, 'js')).filter((f) => f.endsWith('.js')).map((f) => 'js/' + f)
 );
 
 const defs = files
   .map((f) => {
-    const code = fs.readFileSync(path.join(root, f), 'utf8');
+    const code = f === 'js/layout_data.js' ? layoutJs : fs.readFileSync(path.join(root, f), 'utf8');
     return '__def(' + JSON.stringify(f) + ', function (module, exports, require) {\n' + code + '\n});';
   })
   .join('\n');
@@ -33,6 +40,10 @@ const html = `<!doctype html>
 </head>
 <body>
 <canvas id="game"></canvas>
+<script>
+// 界面编辑模式：只有本机编辑器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
+if (/[?&]edit\\b/.test(location.search) && /^(localhost|127\\.0\\.0\\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\\/script>');
+</script>
 <script>
 // 极简 CommonJS：模拟微信小游戏的 require
 var __m = {}, __c = {};
@@ -62,6 +73,7 @@ __require('')('./game.js');
 `;
 
 // preview.html 给本地双击；index.html 给 GitHub Pages 当首页（内容一样）
+if (process.env.OUT) { fs.writeFileSync(process.env.OUT, html); console.log('写好了 ' + process.env.OUT); process.exit(0); }
 fs.writeFileSync(path.join(root, 'preview.html'), html);
 fs.writeFileSync(path.join(root, 'index.html'), html);
 console.log('写好了 preview.html 和 index.html（' + files.length + ' 个文件）');

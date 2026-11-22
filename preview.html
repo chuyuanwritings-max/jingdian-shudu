@@ -16,6 +16,10 @@
 <body>
 <canvas id="game"></canvas>
 <script>
+// 界面编辑模式：只有本机编辑器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
+if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
+</script>
+<script>
 // 极简 CommonJS：模拟微信小游戏的 require
 var __m = {}, __c = {};
 function __def(name, fn) { __m[name] = fn; }
@@ -174,7 +178,7 @@ module.exports = { create, input, erase, undo, findHint, fillHint, revive, count
 __def("js/config.js", function (module, exports, require) {
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.7.3';
+const VERSION = '0.7.4';
 
 // 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
 // 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
@@ -1575,6 +1579,93 @@ function draw(ctx, W, H, dpr) {
 module.exports = { get, draw, colors, whenReady, bandY, AMBER, PAPER, INK };
 
 });
+__def("js/layout.js", function (module, exports, require) {
+// 界面布局表（2026-11-22，给「界面编辑模式」用，见 ../../00_界面编辑器/README.md）。
+// 每个能摆的界面元素一个 id；位置按设计稿算：宽 375，内容区从 top=48（刘海下）到 bottom=778（底部安全区上）。
+// 锚点：ax 横向 l 贴左 / r 贴右 / c 居中 / s 左右拉满（两边留边）；ay 纵向 t 贴顶 / b 贴底 / m 居中。
+// 换手机时：位置按宽、高各自的比例挪，大小按两个比例里小的那个缩（矮屏 iPhone SE 整体缩小，不会叠在一起）。
+// Cc 在编辑器里摆好的结果存在 原型/layout.json，打包时生成 js/layout_data.js，这里盖在默认值上。
+// 这个文件只管算位置，编辑器本身不进微信包。
+const REF = { W: 375, top: 48, bottom: 778 };
+
+const DEFS = {
+  // 主页
+  'home.title': { name: '游戏名', screen: 'home', x: 87, y: 69, w: 200, h: 44, ax: 'c', ay: 't' },
+  'home.main': { name: '大按钮', screen: 'home', x: 52, y: 568, w: 270, h: 62, ax: 'c', ay: 'b' },
+  'home.link': { name: '小字（换难度）', screen: 'home', x: 117, y: 634, w: 140, h: 44, ax: 'c', ay: 'b' },
+  'home.daily': { name: '今日', screen: 'home', x: 18, y: 700, w: 64, h: 70, ax: 'l', ay: 'b' },
+  'home.more': { name: '更多', screen: 'home', x: 293, y: 700, w: 64, h: 70, ax: 'r', ay: 'b' },
+  // 棋盘（局内）
+  'play.info': { name: '错误 / 分数 / 时间', screen: 'play', x: 0, y: 92, w: 375, h: 30, ax: 's', ay: 't' },
+  'play.board': { name: '棋盘', screen: 'play', x: 12, y: 176, w: 351, h: 351, ax: 'c', ay: 'm' },
+  'play.hint': { name: '提示卡（出提示时才有）', screen: 'play', x: 12, y: 537, w: 351, h: 64, ax: 's', ay: 'm' },
+  'play.tools': { name: '工具（撤销 / 橡皮 / 笔记 / 提示）', screen: 'play', x: 8, y: 622, w: 359, h: 62, ax: 's', ay: 'b' },
+  'play.pad': { name: '数字键', screen: 'play', x: 8, y: 692, w: 359, h: 72, ax: 's', ay: 'b' },
+  // 结算
+  'result.icon': { name: '顶上的勾 / 金方块', screen: 'result', x: 153, y: 80, w: 68, h: 68, ax: 'c', ay: 't' },
+  'result.head': { name: '完成！+ 难度', screen: 'result', x: 40, y: 154, w: 295, h: 70, ax: 'c', ay: 't' },
+  'result.score': { name: '分数', screen: 'result', x: 87, y: 240, w: 200, h: 72, ax: 'c', ay: 't' },
+  'result.stats': { name: '数据卡（用时 / 最好 / 错误 / 连胜）', screen: 'result', x: 16, y: 324, w: 343, h: 170, ax: 's', ay: 't' },
+  'result.share': { name: '发给朋友挑战', screen: 'result', x: 16, y: 512, w: 343, h: 54, ax: 's', ay: 't' },
+  'result.again': { name: '再来一局', screen: 'result', x: 16, y: 576, w: 166, h: 50, ax: 'c', ay: 't' },
+  'result.home': { name: '回首页', screen: 'result', x: 193, y: 576, w: 166, h: 50, ax: 'c', ay: 't' },
+  'result.theme': { name: '看视频解锁主题', screen: 'result', x: 16, y: 640, w: 343, h: 50, ax: 's', ay: 't' },
+};
+
+let data = {};
+try { data = (require('./layout_data.js') || {}).elements || {}; } catch (e) { data = {}; }
+
+let M = { W: REF.W, top: REF.top, bottom: REF.bottom };
+const used = {}; // 这一帧画了哪些元素（编辑器用来画框）
+
+function setMetrics(W, top, bottom) { M = { W, top, bottom }; }
+function transform() {
+  const sx = M.W / REF.W, sy = (M.bottom - M.top) / (REF.bottom - REF.top);
+  return { sx, sy, s: Math.min(sx, sy), W: M.W, top: M.top, bottom: M.bottom, mid: (M.top + M.bottom) / 2, ref: REF };
+}
+function def(id) {
+  const d = DEFS[id];
+  if (!d) throw new Error('布局表里没有 ' + id);
+  return Object.assign({}, d, data[id] || {});
+}
+// 设计稿坐标 → 这台手机上的坐标（逻辑像素）
+function rect(id) {
+  const d = def(id), T = transform();
+  let x, w;
+  if (d.ax === 's') { x = d.x * T.sx; w = T.W - (REF.W - d.w) * T.sx; }
+  else {
+    w = d.w * T.s;
+    if (d.ax === 'l') x = d.x * T.sx;
+    else if (d.ax === 'r') x = T.W - (REF.W - d.x - d.w) * T.sx - w;
+    else x = T.W / 2 + (d.x + d.w / 2 - REF.W / 2) * T.sx - w / 2;
+  }
+  const h = d.h * T.s;
+  let y;
+  if (d.ay === 't') y = T.top + (d.y - REF.top) * T.sy;
+  else if (d.ay === 'b') y = T.bottom - (REF.bottom - d.y - d.h) * T.sy - h;
+  else y = T.mid + (d.y + d.h / 2 - (REF.top + REF.bottom) / 2) * T.sy - h / 2;
+  const r = { x, y, w, h };
+  used[id] = r;
+  return r;
+}
+// 元素里的字跟着框缩放：框现在的高 ÷ 默认的高（换小手机变小；Cc 把框拉大，字也变大）
+function k(id, r) { return Math.max(0.6, Math.min(1.6, r.h / DEFS[id].h)); }
+function beginFrame() { for (const k in used) delete used[k]; }
+// 编辑器在浏览器里改布局时用（游戏本身不调）
+function setData(elements) { data = elements || {}; }
+function getData() { return data; }
+
+module.exports = { REF, DEFS, rect, def, k, transform, setMetrics, beginFrame, used, setData, getData };
+
+});
+__def("js/layout_data.js", function (module, exports, require) {
+// 自动生成，别手改：改 原型/layout.json（或用界面编辑器），再跑 node tools/build-preview.js
+module.exports = {
+  "version": 1,
+  "elements": {}
+};
+
+});
 __def("js/main.js", function (module, exports, require) {
 // 总调度：画布、帧循环（没东西动就不重画，省电不发热）、触摸分发、场景切换、弹层、提示条。
 const P = require('./platform.js');
@@ -1601,6 +1692,9 @@ if (env.capsule) {
 }
 app.headerH = HEADER_H;
 app.bottom = app.H - Math.max(env.safeBottom, 0);
+// 界面布局表：按这台手机的宽和内容区上下边算位置
+const LY = require('./layout.js');
+LY.setMetrics(app.W, app.headerY, app.bottom);
 
 // 当前主题（颜色 + 质地一整套）
 Object.defineProperty(app, 'th', {
@@ -1679,6 +1773,7 @@ function render(t) {
   ctx.fillRect(0, 0, app.W, app.H);
   Paper.fill(ctx, th.texture, app.dpr, !!th.pageDark, 0, 0, app.W, app.H);
   ui.beginFrame();
+  LY.beginFrame();
   // 换场景：淡入 + 轻轻上移 8 像素
   const p = Math.min(1, (t - (app.sceneT0 || 0)) / 220);
   ctx.save();
@@ -1774,6 +1869,7 @@ frame();
 P.exposeForTest('__app', app);
 P.exposeForTest('__store', store);
 P.exposeForTest('__regions', ui.allRegions);
+P.exposeForTest('__layout', LY);
 
 });
 __def("js/overlays.js", function (module, exports, require) {
@@ -2182,12 +2278,15 @@ function setup(onTouch) {
     const phone = window.innerWidth > 520;
     width = phone ? 390 : window.innerWidth;
     height = phone ? Math.min(844, window.innerHeight - 20) : window.innerHeight;
+    // 指定装成哪部手机（宽、高、刘海、底部安全区），比如界面编辑器切机型时
+    const dev = window.__DEVICE;
+    if (dev) { width = dev.w; height = dev.h; safeTop = dev.top || 0; safeBottom = dev.bottom || 0; }
     dpr = Math.min(3, window.devicePixelRatio || 2);
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
-    if (!phone) safeBottom = 8;
+    if (!phone && !dev) safeBottom = 8;
     const pos = (e) => {
       const r = canvas.getBoundingClientRect();
       return [e.clientX - r.left, e.clientY - r.top];
@@ -2551,18 +2650,13 @@ const T = require('./tutorial.js');
 const store = require('./store.js');
 const bank = require('./puzzles.js');
 const HA = require('./homeart.js');
+const LY = require('./layout.js');
 
 module.exports = function (app) {
   app.TITLE = '数独'; // 名字定了以后改这里
   let H0 = C.HOME; // 每帧按主页图换（暗底 / 亮底）
-  // 游戏名的位置：主页图上方有空白纸边的，放在那条边的正中（不压到九宫）；代码占位图照旧
-  Object.defineProperty(app, 'titleY', {
-    get: () => {
-      const band = HA.bandY(app.W, app.H, app.dpr);
-      if (band) return Math.max(app.headerY + app.headerH / 2 + 6, (app.headerY + band) / 2);
-      return Math.max(app.headerY + app.headerH + 46, app.H * 0.175);
-    },
-  });
+  // 游戏名的位置：布局表 home.title（界面编辑器里能拖）；欢迎页、开场过场也对齐它
+  Object.defineProperty(app, 'titleY', { get: () => { const r = LY.rect('home.title'); return r.y + r.h / 2; } });
   let coldStart = true; // 冷启动的那一次：亮的那块「啪」地点亮（0.3 秒，不拦操作）
 
   // 大按钮写什么：有没做完的一局 → 继续；新手引导没走完 → 接着学；其他 → 新游戏（直接开推荐那一档）
@@ -2656,31 +2750,35 @@ module.exports = function (app) {
           ctx.restore();
         }
       }
-      // 游戏名
-      ui.text(ctx, app.TITLE, W / 2, app.titleY, 44, H0.title, 'center', 800);
+      // 游戏名（字号跟着框的高度走）
+      const rt = LY.rect('home.title');
+      ui.text(ctx, app.TITLE, rt.x + rt.w / 2, rt.y + rt.h / 2, Math.round(rt.h), H0.title, 'center', 800);
       // 大按钮
       const a = mainAction();
-      const bw = Math.round(W * 0.72), bh = 62, bx = (W - bw) / 2, by = Math.round(Math.min(H * 0.7, app.bottom - 170));
+      const rm = LY.rect('home.main');
+      const bw = Math.round(rm.w), bh = Math.round(rm.h), bx = Math.round(rm.x), by = Math.round(rm.y);
       const on = ui.button({ id: 'home-main', x: bx, y: by, w: bw, h: bh, onTap: a.go });
       ctx.save();
-      if (on) { ctx.translate(W / 2, by + bh / 2); ctx.scale(0.97, 0.97); ctx.translate(-W / 2, -by - bh / 2); }
-      ui.fillRR(ctx, bx, by, bw, bh, 18, H0.button);
-      ui.text(ctx, a.title, W / 2, by + 24, 20, H0.buttonText, 'center', 800);
+      const mx = bx + bw / 2;
+      if (on) { ctx.translate(mx, by + bh / 2); ctx.scale(0.97, 0.97); ctx.translate(-mx, -by - bh / 2); }
+      ui.fillRR(ctx, bx, by, bw, bh, Math.min(18, bh / 2), H0.button);
+      const mk = LY.k('home.main', rm);
+      ui.text(ctx, a.title, mx, by + bh / 2 - 7 * mk, Math.round(20 * mk), H0.buttonText, 'center', 800);
       ctx.globalAlpha = 0.7;
-      ui.text(ctx, a.sub, W / 2, by + 45, 12, H0.buttonText, 'center', 600);
+      ui.text(ctx, a.sub, mx, by + bh / 2 + 14 * mk, Math.round(12 * mk), H0.buttonText, 'center', 600);
       ctx.restore();
       // 一行小字
+      const rl = LY.rect('home.link');
       if (a.link) {
-        const ly = by + bh + 26;
-        const lon = ui.button({ id: 'home-link', x: W / 2 - 70, y: ly - 22, w: 140, h: 44, onTap: () => app.difficultySheet() });
-        ui.text(ctx, a.link, W / 2, ly, 14, lon ? H0.title : H0.sub, 'center', 600);
+        const lon = ui.button({ id: 'home-link', x: rl.x, y: rl.y, w: rl.w, h: rl.h, onTap: () => app.difficultySheet() });
+        ui.text(ctx, a.link, rl.x + rl.w / 2, rl.y + rl.h / 2, Math.round(14 * LY.k('home.link', rl)), lon ? H0.title : H0.sub, 'center', 600);
       }
-      // 两个小图标
-      const iy = app.bottom - 52;
-      const tOn = ui.button({ id: 'home-daily', x: 18, y: iy - 26, w: 64, h: 70, onTap: () => app.go('daily') });
-      drawToday(ctx, 50, iy, tOn);
-      const mOn = ui.button({ id: 'home-more', x: W - 82, y: iy - 26, w: 64, h: 70, onTap: () => app.moreSheet() });
-      drawMore(ctx, W - 50, iy, mOn);
+      // 两个小图标（图标在框的上半，字在下面）
+      const rd = LY.rect('home.daily'), ro = LY.rect('home.more');
+      const tOn = ui.button({ id: 'home-daily', x: rd.x, y: rd.y, w: rd.w, h: rd.h, onTap: () => app.go('daily') });
+      drawToday(ctx, rd.x + rd.w / 2, rd.y + 26, tOn);
+      const mOn = ui.button({ id: 'home-more', x: ro.x, y: ro.y, w: ro.w, h: ro.h, onTap: () => app.moreSheet() });
+      drawMore(ctx, ro.x + ro.w / 2, ro.y + 26, mOn);
     },
   };
 };
@@ -3083,6 +3181,7 @@ const C = require('./config.js');
 const S = require('./sudoku.js');
 const store = require('./store.js');
 const bank = require('./puzzles.js');
+const LY = require('./layout.js');
 
 module.exports = function (app) {
   // ---------- 结算 ----------
@@ -3095,92 +3194,86 @@ module.exports = function (app) {
     },
     live: (t) => t - res.t0 < 1200,
     ready: () => !res.fromCut || P.now() - res.t0 > 330,
+    // 位置都从布局表来（界面编辑器里能拖）：顶上的勾、标题、分数、数据卡、三个按钮、解锁主题
     draw(ctx, t) {
-      const th = app.th, W = app.W, b = res.b;
+      const th = app.th, b = res.b, R = LY.rect;
       const p = Math.min(1, (t - res.t0) / 900);
-      let y = app.headerY + 30;
+      const ri = R('result.icon'), rh = R('result.head'), rs = R('result.score'), rc = R('result.stats');
+      const rShare = R('result.share'), rAgain = R('result.again'), rHome = R('result.home'), rTheme = R('result.theme');
+      const icx = ri.x + ri.w / 2, icy = ri.y + ri.h / 2, isz = Math.min(ri.w, ri.h);
       if (res.icon) {
         // 过场里那块金方块缩在页面顶上
-        const iw = res.icon.width / app.dpr, ih = res.icon.height / app.dpr;
-        ctx.drawImage(res.icon, 0, 0, res.icon.width, res.icon.height, W / 2 - iw / 2, y + 36 - ih / 2, iw, ih);
+        const iw = res.icon.width / app.dpr, ih = res.icon.height / app.dpr, k = isz / 68;
+        ctx.drawImage(res.icon, 0, 0, res.icon.width, res.icon.height, icx - iw * k / 2, icy - ih * k / 2, iw * k, ih * k);
       } else {
         // 勾：圆从小弹到大
-        const s = ui.ease.back(Math.min(1, (t - res.t0) / 450));
-        ctx.save(); ctx.translate(W / 2, y + 36); ctx.scale(s, s);
+        const s = ui.ease.back(Math.min(1, (t - res.t0) / 450)) * isz / 68;
+        ctx.save(); ctx.translate(icx, icy); ctx.scale(s, s);
         ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2); ctx.fillStyle = th.ok; ctx.fill();
         ui.icons.check(ctx, 0, 0, 40, '#FFFFFF', 4);
         ctx.restore();
       }
-      y += 96;
+      const hk = LY.k('result.head', rh), sk = LY.k('result.score', rs), ck = LY.k('result.stats', rc);
+      const hx = rh.x + rh.w / 2, hy = rh.y + rh.h * 0.29;
       const tierName = S.TIERS[b.tier].name;
-      const half = (W - 32 - 10) / 2;
       if (b.mode === 'challenge') {
-        // ---- 好友挑战：两人对比 ----
+        // ---- 好友挑战：两人对比（两张卡放在数据卡的位置）----
         const r = app.challengeResult(b);
-        ui.text(ctx, r.win ? '你赢了！' : '差一点', W / 2, y, 28, r.win ? th.ok : th.text, 'center', 700);
-        ui.text(ctx, (r.tie ? '和朋友一样快' + (r.win ? '，错得不比他多' : '，但错得多一点') : (r.win ? '比朋友快了 ' : '比朋友慢了 ') + app.fmt(r.diff)) + ' · 「' + tierName + '」', W / 2, y + 34, 14, th.sub, 'center');
-        y += 66;
-        const cw = half, chh = 128;
+        ui.text(ctx, r.win ? '你赢了！' : '差一点', hx, hy, Math.round(28 * hk), r.win ? th.ok : th.text, 'center', 700);
+        ui.text(ctx, (r.tie ? '和朋友一样快' + (r.win ? '，错得不比他多' : '，但错得多一点') : (r.win ? '比朋友快了 ' : '比朋友慢了 ') + app.fmt(r.diff)) + ' · 「' + tierName + '」', hx, rh.y + rh.h * 0.77, Math.round(14 * hk), th.sub, 'center');
+        const cw = (rc.w - 10) / 2, chh = Math.min(rc.h, 128);
         [['你', b.elapsed, b.mistakes, r.win], ['朋友', b.challenge.time, b.challenge.mistakes, !r.win]].forEach(([who, tm, mis, best], i) => {
-          const x = 16 + i * (cw + 10);
+          const x = rc.x + i * (cw + 10), y = rc.y;
           ui.card(ctx, x, y, cw, chh, 16, th);
           if (best) { ui.rr(ctx, x, y, cw, chh, 16); ctx.strokeStyle = th.gold; ctx.lineWidth = 3; ctx.stroke(); ui.icons.trophy(ctx, x + cw - 24, y + 24, 22, th.gold, 1); }
           ui.text(ctx, who, x + 18, y + 26, 15, th.sub, 'left', 600);
           ui.text(ctx, app.fmt(tm), x + cw / 2, y + 70, 32, th.text, 'center', 700);
           ui.text(ctx, mis ? '错 ' + mis + ' 次' : '一次没错', x + cw / 2, y + 104, 13, th.sub, 'center');
         });
-        y += chh + 22;
         if (!app.scenes.result.ready()) { app.animate(400); return; } // 按钮晚 20 帧
-        ui.pill(ctx, th, 'res-reply', 16, y, W - 32, 54, r.win ? '发回去，让他再来' : '发回去挑战他', () => app.shareChallenge(b, true), 'primary');
-        y += 64;
-        ui.pill(ctx, th, 'res-again', 16, y, half, 50, '再来一局', () => app.startGame(b.tier), 'card');
-        ui.pill(ctx, th, 'res-home', 26 + half, y, half, 50, '回首页', () => app.go('home'), 'card');
-        y += 64;
+        ui.pill(ctx, th, 'res-reply', rShare.x, rShare.y, rShare.w, rShare.h, r.win ? '发回去，让他再来' : '发回去挑战他', () => app.shareChallenge(b, true), 'primary');
+        ui.pill(ctx, th, 'res-again', rAgain.x, rAgain.y, rAgain.w, rAgain.h, '再来一局', () => app.startGame(b.tier), 'card');
+        ui.pill(ctx, th, 'res-home', rHome.x, rHome.y, rHome.w, rHome.h, '回首页', () => app.go('home'), 'card');
       } else {
-      ui.text(ctx, '完成！', W / 2, y, 28, th.text, 'center', 700);
-      ui.text(ctx, (b.mode === 'daily' ? '每日挑战 · ' + b.date.slice(5).replace('-', '月') + '日 · ' : '') + tierName, W / 2, y + 34, 14, th.sub, 'center');
-      y += 70;
-      // 分数滚上去
-      const shown = res.fromCut ? b.score : Math.round(b.score * ui.ease.out(p));
-      ui.text(ctx, String(shown), W / 2, y + 20, 44, th.primary, 'center', 700);
-      ui.text(ctx, b.newBestScore ? '本档最高分！' : '分', W / 2, y + 56, 13, b.newBestScore ? th.gold : th.sub, 'center', 600);
-      y += 80;
-      // 数据
-      const st = store.data.stats[b.tier];
-      const rows = b.mode === 'daily'
-        ? [['用时', app.fmt(b.elapsed)], ['错误', String(b.mistakes)], ['本月完成', Object.keys(store.data.daily).filter((k) => k.slice(0, 7) === b.date.slice(0, 7)).length + ' 天']]
-        : [['用时', app.fmt(b.elapsed) + (b.newBest ? '  新纪录' : '')], ['本档最好', app.fmt(st.best)], ['错误', String(b.mistakes)], ['连胜', st.streak + ' 局']];
-      const rh = 40;
-      ui.card(ctx, 16, y, W - 32, rows.length * rh + 10, 16, th);
-      rows.forEach((r, i) => {
-        const ry = y + 5 + i * rh + rh / 2;
-        ui.text(ctx, r[0], 36, ry, 15, th.sub);
-        ui.text(ctx, r[1], W - 36, ry, 16, r[1].indexOf('新纪录') >= 0 ? th.gold : th.text, 'right', 600);
-      });
-      y += rows.length * rh + 10 + 18;
-      // 按钮：发给朋友挑战这一题（主按钮）；再来一局 / 回首页并排
-      if (!app.scenes.result.ready()) { app.animate(400); return; } // 按钮晚 20 帧
-      ui.pill(ctx, th, 'res-share', 16, y, W - 32, 54, '发给朋友挑战这一题', () => app.shareChallenge(b), 'primary');
-      y += 64;
-      if (b.mode === 'daily') ui.pill(ctx, th, 'res-cal', 16, y, half, 50, '回日历', () => app.go('daily'), 'card');
-      else ui.pill(ctx, th, 'res-again', 16, y, half, 50, '再来一局', () => app.startGame(b.tier), 'card');
-      ui.pill(ctx, th, 'res-home', 26 + half, y, half, 50, '回首页', () => app.go('home'), 'card');
-      y += 64;
+        ui.text(ctx, '完成！', hx, hy, Math.round(28 * hk), th.text, 'center', 700);
+        ui.text(ctx, (b.mode === 'daily' ? '每日挑战 · ' + b.date.slice(5).replace('-', '月') + '日 · ' : '') + tierName, hx, rh.y + rh.h * 0.77, Math.round(14 * hk), th.sub, 'center');
+        // 分数滚上去
+        const shown = res.fromCut ? b.score : Math.round(b.score * ui.ease.out(p));
+        ui.text(ctx, String(shown), rs.x + rs.w / 2, rs.y + rs.h * 0.33, Math.round(44 * sk), th.primary, 'center', 700);
+        ui.text(ctx, b.newBestScore ? '本档最高分！' : '分', rs.x + rs.w / 2, rs.y + rs.h * 0.83, Math.round(13 * sk), b.newBestScore ? th.gold : th.sub, 'center', 600);
+        // 数据卡：行高跟着卡的高度走
+        const st = store.data.stats[b.tier];
+        const rows = b.mode === 'daily'
+          ? [['用时', app.fmt(b.elapsed)], ['错误', String(b.mistakes)], ['本月完成', Object.keys(store.data.daily).filter((k) => k.slice(0, 7) === b.date.slice(0, 7)).length + ' 天']]
+          : [['用时', app.fmt(b.elapsed) + (b.newBest ? '  新纪录' : '')], ['本档最好', app.fmt(st.best)], ['错误', String(b.mistakes)], ['连胜', st.streak + ' 局']];
+        const rowH = (rc.h - 10) / 4;
+        ui.card(ctx, rc.x, rc.y, rc.w, rows.length * rowH + 10, 16, th);
+        rows.forEach((r, i) => {
+          const ry = rc.y + 5 + i * rowH + rowH / 2;
+          ui.text(ctx, r[0], rc.x + 20, ry, Math.round(15 * ck), th.sub);
+          ui.text(ctx, r[1], rc.x + rc.w - 20, ry, Math.round(16 * ck), r[1].indexOf('新纪录') >= 0 ? th.gold : th.text, 'right', 600);
+        });
+        // 按钮：发给朋友挑战这一题（主按钮）；再来一局 / 回首页并排
+        if (!app.scenes.result.ready()) { app.animate(400); return; } // 按钮晚 20 帧
+        ui.pill(ctx, th, 'res-share', rShare.x, rShare.y, rShare.w, rShare.h, '发给朋友挑战这一题', () => app.shareChallenge(b), 'primary');
+        if (b.mode === 'daily') ui.pill(ctx, th, 'res-cal', rAgain.x, rAgain.y, rAgain.w, rAgain.h, '回日历', () => app.go('daily'), 'card');
+        else ui.pill(ctx, th, 'res-again', rAgain.x, rAgain.y, rAgain.w, rAgain.h, '再来一局', () => app.startGame(b.tier), 'card');
+        ui.pill(ctx, th, 'res-home', rHome.x, rHome.y, rHome.w, rHome.h, '回首页', () => app.go('home'), 'card');
       }
       // 结算页的激励视频：解锁一套配色
       const locked = C.THEMES.filter((tm) => !store.data.themes[tm.id]);
       if (locked.length) {
-        const tm = locked[0];
-        const on = ui.button({ id: 'res-theme', x: 16, y, w: W - 32, h: 50, onTap: () => app.showAd('theme', '「' + tm.name + '」主题', () => {
+        const tm = locked[0], x = rTheme.x, y = rTheme.y, w = rTheme.w, h = rTheme.h;
+        const on = ui.button({ id: 'res-theme', x, y, w, h, onTap: () => app.showAd('theme', '「' + tm.name + '」主题', () => {
           store.data.themes[tm.id] = true;
           store.data.settings.theme = tm.id;
           store.save();
           app.toast('已换上「' + tm.name + '」主题，设置里可以换回');
         }) });
-        ui.fillRR(ctx, 16, y, W - 32, 50, 16, on ? th.sel : th.soft);
-        ui.icons.video(ctx, 44, y + 25, 22, th.gold);
-        ctx.beginPath(); ctx.arc(W - 44, y + 25, 11, 0, Math.PI * 2); ctx.fillStyle = tm.primary; ctx.fill();
-        ui.text(ctx, '看视频，解锁「' + tm.name + '」主题', W / 2, y + 25, 15, th.primary, 'center', 600);
+        ui.fillRR(ctx, x, y, w, h, 16, on ? th.sel : th.soft);
+        ui.icons.video(ctx, x + 28, y + h / 2, 22, th.gold);
+        ctx.beginPath(); ctx.arc(x + w - 28, y + h / 2, 11, 0, Math.PI * 2); ctx.fillStyle = tm.primary; ctx.fill();
+        ui.text(ctx, '看视频，解锁「' + tm.name + '」主题', x + w / 2, y + h / 2, 15, th.primary, 'center', 600);
       }
     },
   };
@@ -3420,6 +3513,7 @@ const store = require('./store.js');
 const bank = require('./puzzles.js');
 const DB = require('./drawboard.js');
 const T = require('./tutorial.js');
+const LY = require('./layout.js');
 
 module.exports = function (app) {
   let b = null; // 当前这一局
@@ -3431,25 +3525,18 @@ module.exports = function (app) {
   let winAt = 0, saveTimer = 0, lastSec = -1;
   const geo = { x: 0, y: 0, size: 0 };
   let L = null; // 布局
-  let hintBelow = true;
 
   const resetFx = () => { fx = { pops: {}, rings: [], flash: [], shake: null, floats: [], hops: {}, keyDone: {}, events: [], gold: {}, sparks: [], digit: null, boardShake: null }; };
   let party = null; // 通关庆祝：{ t0, k }
 
+  // 位置都从布局表来（界面编辑器里能拖）：信息行、棋盘、提示卡、工具、数字键
   function layout() {
-    const W = app.W;
-    const infoY = app.headerY + app.headerH;
-    const infoBottom = infoY + 30;
-    const padH = 72, toolsH = 62;
-    const padY = app.bottom - 14 - padH;
-    const toolsY = padY - 8 - toolsH;
-    const avail = toolsY - 10 - infoBottom;
-    geo.size = Math.floor(Math.min(W - 16, avail - 8) / 9) * 9;
-    geo.x = Math.round((W - geo.size) / 2);
-    geo.y = Math.round(infoBottom + 8 + Math.max(0, (avail - 8 - geo.size) * 0.35));
-    // 提示卡放在棋盘下面的空当里（靠近大拇指）；空当不够就盖在工具行上
-    hintBelow = toolsY - (geo.y + geo.size) >= 76;
-    L = { infoY, padY, padH, toolsY, toolsH, padX: 8, keyW: (W - 16) / 9 };
+    const rb = LY.rect('play.board'), ri = LY.rect('play.info'), rt = LY.rect('play.tools'), rp = LY.rect('play.pad'), rh = LY.rect('play.hint');
+    geo.size = Math.floor(Math.min(rb.w, rb.h) / 9) * 9; // 9 的倍数，格线才清楚
+    geo.x = Math.round(rb.x + (rb.w - geo.size) / 2);
+    geo.y = Math.round(rb.y + (rb.h - geo.size) / 2);
+    L = { infoX: ri.x, infoY: ri.y, infoW: ri.w, infoH: ri.h, padX: rp.x, padY: rp.y, padW: rp.w, padH: rp.h, keyW: rp.w / 9,
+      toolsX: rt.x, toolsY: rt.y, toolsW: rt.w, toolsH: rt.h, hint: rh };
   }
 
   // ---------- 开局 / 继续 ----------
@@ -3736,17 +3823,17 @@ module.exports = function (app) {
 
   // ---------- 画 ----------
   function drawInfo(ctx, th) {
-    const y = L.infoY + 14, W = app.W;
+    const y = L.infoY + L.infoH / 2, x0 = L.infoX, x1 = L.infoX + L.infoW;
     const lim = store.data.settings.mistakeLimit !== false;
-    ui.text(ctx, '错误', 20, y, 13, th.sub);
-    ui.text(ctx, lim ? b.mistakes + '/' + C.RULES.maxMistakes : String(b.mistakes), 52, y, 14, b.mistakes ? th.wrong : th.text, 'left', 600);
-    ui.text(ctx, String(b.score), W / 2, y, 17, th.text, 'center', 700);
+    ui.text(ctx, '错误', x0 + 20, y, 13, th.sub);
+    ui.text(ctx, lim ? b.mistakes + '/' + C.RULES.maxMistakes : String(b.mistakes), x0 + 52, y, 14, b.mistakes ? th.wrong : th.text, 'left', 600);
+    ui.text(ctx, String(b.score), (x0 + x1) / 2, y, 17, th.text, 'center', 700);
     if (b.challenge) {
       // 好友挑战：时间旁边写着朋友的用时，超过了变红
       const over = b.elapsed > b.challenge.time;
-      ui.text(ctx, app.fmt(b.elapsed), W - 20, y - 7, 14, over ? th.wrong : th.text, 'right', 600);
-      ui.text(ctx, '朋友 ' + app.fmt(b.challenge.time), W - 20, y + 10, 11, th.sub, 'right');
-    } else if (store.data.settings.showTimer !== false) ui.text(ctx, app.fmt(b.elapsed), W - 20, y, 14, th.text, 'right', 500);
+      ui.text(ctx, app.fmt(b.elapsed), x1 - 20, y - 7, 14, over ? th.wrong : th.text, 'right', 600);
+      ui.text(ctx, '朋友 ' + app.fmt(b.challenge.time), x1 - 20, y + 10, 11, th.sub, 'right');
+    } else if (store.data.settings.showTimer !== false) ui.text(ctx, app.fmt(b.elapsed), x1 - 20, y, 14, th.text, 'right', 500);
   }
   // 带练：卡片上一行字说为什么，手指先指格子、选中以后指数字键
   function drawGuide(ctx, th, t) {
@@ -3758,21 +3845,21 @@ module.exports = function (app) {
     }
     const g = guide, k = g.h.place.k, v = g.h.place.v;
     const p = Math.min(1, (t - g.t0) / 220);
-    const x = 12, w = app.W - 24, hh = 64;
-    const y = (hintBelow ? geo.y + geo.size + 10 : L.toolsY + L.toolsH - hh) + (1 - ui.ease.out(p)) * 10;
+    const x = L.hint.x, w = L.hint.w, hh = L.hint.h;
+    const y = L.hint.y + (1 - ui.ease.out(p)) * 10;
     ctx.save();
     ctx.globalAlpha = p;
     ui.card(ctx, x, y, w, hh, 14, th);
     ui.text(ctx, '第 ' + (4 - b.guideLeft) + ' / 3 步', x + 16, y + 18, 12, th.primary, 'left', 700);
     ui.wrap(ctx, g.h.text.replace(/^[^：]*：/, ''), x + 16, y + 30, w - 32, 13, 17, th.text);
     ctx.restore();
-    const target = b.selected === k ? { x: 8 + (v - 0.5) * L.keyW, y: L.padY + L.padH / 2 } : (() => { const r = DB.cellRect(geo, k); return { x: r.x + r.s / 2, y: r.y + r.s / 2 }; })();
+    const target = b.selected === k ? { x: L.padX + (v - 0.5) * L.keyW, y: L.padY + L.padH / 2 } : (() => { const r = DB.cellRect(geo, k); return { x: r.x + r.s / 2, y: r.y + r.s / 2 }; })();
     ui.icons.hand(ctx, target.x + 4, target.y + 6 + Math.sin(t / 220) * 5, 44, th.text);
   }
   function drawHintCard(ctx, th, t) {
     const p = Math.min(1, (t - hint.t0) / 220);
-    const x = 12, w = app.W - 24, h = 64;
-    const y = (hintBelow ? geo.y + geo.size + 10 : L.toolsY + L.toolsH - h) + (1 - ui.ease.out(p)) * 10;
+    const x = L.hint.x, w = L.hint.w, h = L.hint.h;
+    const y = L.hint.y + (1 - ui.ease.out(p)) * 10;
     ui.button({ id: 'hint-card', x, y, w, h }); // 挡住下面的按钮
     ctx.save();
     ctx.globalAlpha = p;
@@ -3797,9 +3884,9 @@ module.exports = function (app) {
   // 数字键（教学也用）：opts = { y, h, onPress, counts, noteMode, disabled, highlight }
   const PAD_TILT = [-3, 2, -2, 3, -1, 2, -3, 1, 3]; // 每个键歪几度
   app.drawPad = (ctx, opts) => {
-    const th = app.th, keyW = (app.W - 16) / 9;
+    const th = app.th, px = opts.x != null ? opts.x : 8, keyW = (opts.w != null ? opts.w : app.W - 16) / 9;
     for (let v = 1; v <= 9; v++) {
-      const x = 8 + (v - 1) * keyW;
+      const x = px + (v - 1) * keyW;
       const left = opts.counts ? 9 - opts.counts[v] : null;
       const done = left === 0;
       const on = ui.button({ id: 'key-' + v, x, y: opts.y, w: keyW, h: opts.h, silent: done, onDown: done || opts.disabled ? null : () => opts.onPress(v) });
@@ -3841,10 +3928,10 @@ module.exports = function (app) {
     }
   };
   // 工具行（教学也用）：items = [{ id, label, icon, badge, active, onTap, highlight }]
-  app.drawTools = (ctx, y, h, items) => {
-    const th = app.th, w = (app.W - 16) / items.length;
+  app.drawTools = (ctx, y, h, items, x0, w0) => {
+    const th = app.th, tx = x0 != null ? x0 : 8, w = (w0 != null ? w0 : app.W - 16) / items.length;
     items.forEach((it, i) => {
-      const x = 8 + i * w, cx = x + w / 2;
+      const x = tx + i * w, cx = x + w / 2;
       const on = ui.button({ id: 'tool-' + it.id, x, y, w, h, onDown: it.onTap });
       if (on) ui.fillRR(ctx, cx - 30, y + 2, 60, h - 4, 14, th.soft);
       if (it.highlight) {
@@ -3885,6 +3972,7 @@ module.exports = function (app) {
     live: (t) => !!party || (!!hint && t - hint.t0 < 400) || (!!b && b.guided && b.guideLeft > 0) || (!!fx && (fx.sparks.length > 0 || fx.events.length > 0)),
     draw(ctx, t) {
       const th = app.th;
+      layout(); // 每帧按布局表算一次（便宜；编辑器拖动时立刻跟上）
       const tierName = S.TIERS[b.tier].name;
       const title = b.mode === 'daily' ? '每日挑战 · ' + tierName : b.mode === 'challenge' ? '好友挑战 · ' + tierName : tierName;
       app.header(ctx, title, () => { persist(); app.go(b.mode === 'daily' ? 'daily' : 'home'); }, (ctx2, y, h) => {
@@ -3935,8 +4023,8 @@ module.exports = function (app) {
         { id: 'erase', label: '橡皮', icon: 'eraser', onTap: () => tool('erase') },
         { id: 'note', label: '笔记', icon: 'pencil', active: noteMode, badge: { text: noteMode ? '开' : '关', color: noteMode ? th.primary : th.faint }, onTap: () => tool('note') },
         { id: 'hint', label: '提示', icon: 'bulb', badge: hintBadge, onTap: () => tool('hint') },
-      ]);
-      app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone, active: selDigit });
+      ], L.toolsX, L.toolsW);
+      app.drawPad(ctx, { x: L.padX, w: L.padW, y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone, active: selDigit });
       if (hint) drawHintCard(ctx, th, t);
       else if (b.guided && b.guideLeft > 0 && !winAt && !paused) drawGuide(ctx, th, t);
       // 通关第一段：棋盘以外硬切成近黑（点一下直接进第二段）
@@ -3953,8 +4041,8 @@ module.exports = function (app) {
   app.testHooks = {
     board: () => b,
     cellCenter: (k) => { const r = DB.cellRect(geo, k); return { x: r.x + r.s / 2, y: r.y + r.s / 2 }; },
-    padCenter: (v) => ({ x: 8 + (v - 0.5) * L.keyW, y: L.padY + L.padH / 2 }),
-    toolCenter: (i) => ({ x: 8 + (i + 0.5) * ((app.W - 16) / 4), y: L.toolsY + L.toolsH / 2 }),
+    padCenter: (v) => ({ x: L.padX + (v - 0.5) * L.keyW, y: L.padY + L.padH / 2 }),
+    toolCenter: (i) => ({ x: L.toolsX + (i + 0.5) * (L.toolsW / 4), y: L.toolsY + L.toolsH / 2 }),
     hint: () => hint,
     guide: () => guide,
     selDigit: () => selDigit,

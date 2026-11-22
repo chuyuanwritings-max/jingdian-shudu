@@ -23,6 +23,9 @@ if (env.capsule) {
 }
 app.headerH = HEADER_H;
 app.bottom = app.H - Math.max(env.safeBottom, 0);
+// 界面布局表：按这台手机的宽和内容区上下边算位置
+const LY = require('./layout.js');
+LY.setMetrics(app.W, app.headerY, app.bottom);
 
 // 当前主题（颜色 + 质地一整套）
 Object.defineProperty(app, 'th', {
@@ -101,6 +104,7 @@ function render(t) {
   ctx.fillRect(0, 0, app.W, app.H);
   Paper.fill(ctx, th.texture, app.dpr, !!th.pageDark, 0, 0, app.W, app.H);
   ui.beginFrame();
+  LY.beginFrame();
   // 换场景：淡入 + 轻轻上移 8 像素
   const p = Math.min(1, (t - (app.sceneT0 || 0)) / 220);
   ctx.save();
@@ -196,3 +200,4 @@ frame();
 P.exposeForTest('__app', app);
 P.exposeForTest('__store', store);
 P.exposeForTest('__regions', ui.allRegions);
+P.exposeForTest('__layout', LY);

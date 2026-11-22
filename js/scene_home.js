@@ -9,18 +9,13 @@ const T = require('./tutorial.js');
 const store = require('./store.js');
 const bank = require('./puzzles.js');
 const HA = require('./homeart.js');
+const LY = require('./layout.js');
 
 module.exports = function (app) {
   app.TITLE = '数独'; // 名字定了以后改这里
   let H0 = C.HOME; // 每帧按主页图换（暗底 / 亮底）
-  // 游戏名的位置：主页图上方有空白纸边的，放在那条边的正中（不压到九宫）；代码占位图照旧
-  Object.defineProperty(app, 'titleY', {
-    get: () => {
-      const band = HA.bandY(app.W, app.H, app.dpr);
-      if (band) return Math.max(app.headerY + app.headerH / 2 + 6, (app.headerY + band) / 2);
-      return Math.max(app.headerY + app.headerH + 46, app.H * 0.175);
-    },
-  });
+  // 游戏名的位置：布局表 home.title（界面编辑器里能拖）；欢迎页、开场过场也对齐它
+  Object.defineProperty(app, 'titleY', { get: () => { const r = LY.rect('home.title'); return r.y + r.h / 2; } });
   let coldStart = true; // 冷启动的那一次：亮的那块「啪」地点亮（0.3 秒，不拦操作）
 
   // 大按钮写什么：有没做完的一局 → 继续；新手引导没走完 → 接着学；其他 → 新游戏（直接开推荐那一档）
@@ -114,31 +109,35 @@ module.exports = function (app) {
           ctx.restore();
         }
       }
-      // 游戏名
-      ui.text(ctx, app.TITLE, W / 2, app.titleY, 44, H0.title, 'center', 800);
+      // 游戏名（字号跟着框的高度走）
+      const rt = LY.rect('home.title');
+      ui.text(ctx, app.TITLE, rt.x + rt.w / 2, rt.y + rt.h / 2, Math.round(rt.h), H0.title, 'center', 800);
       // 大按钮
       const a = mainAction();
-      const bw = Math.round(W * 0.72), bh = 62, bx = (W - bw) / 2, by = Math.round(Math.min(H * 0.7, app.bottom - 170));
+      const rm = LY.rect('home.main');
+      const bw = Math.round(rm.w), bh = Math.round(rm.h), bx = Math.round(rm.x), by = Math.round(rm.y);
       const on = ui.button({ id: 'home-main', x: bx, y: by, w: bw, h: bh, onTap: a.go });
       ctx.save();
-      if (on) { ctx.translate(W / 2, by + bh / 2); ctx.scale(0.97, 0.97); ctx.translate(-W / 2, -by - bh / 2); }
-      ui.fillRR(ctx, bx, by, bw, bh, 18, H0.button);
-      ui.text(ctx, a.title, W / 2, by + 24, 20, H0.buttonText, 'center', 800);
+      const mx = bx + bw / 2;
+      if (on) { ctx.translate(mx, by + bh / 2); ctx.scale(0.97, 0.97); ctx.translate(-mx, -by - bh / 2); }
+      ui.fillRR(ctx, bx, by, bw, bh, Math.min(18, bh / 2), H0.button);
+      const mk = LY.k('home.main', rm);
+      ui.text(ctx, a.title, mx, by + bh / 2 - 7 * mk, Math.round(20 * mk), H0.buttonText, 'center', 800);
       ctx.globalAlpha = 0.7;
-      ui.text(ctx, a.sub, W / 2, by + 45, 12, H0.buttonText, 'center', 600);
+      ui.text(ctx, a.sub, mx, by + bh / 2 + 14 * mk, Math.round(12 * mk), H0.buttonText, 'center', 600);
       ctx.restore();
       // 一行小字
+      const rl = LY.rect('home.link');
       if (a.link) {
-        const ly = by + bh + 26;
-        const lon = ui.button({ id: 'home-link', x: W / 2 - 70, y: ly - 22, w: 140, h: 44, onTap: () => app.difficultySheet() });
-        ui.text(ctx, a.link, W / 2, ly, 14, lon ? H0.title : H0.sub, 'center', 600);
+        const lon = ui.button({ id: 'home-link', x: rl.x, y: rl.y, w: rl.w, h: rl.h, onTap: () => app.difficultySheet() });
+        ui.text(ctx, a.link, rl.x + rl.w / 2, rl.y + rl.h / 2, Math.round(14 * LY.k('home.link', rl)), lon ? H0.title : H0.sub, 'center', 600);
       }
-      // 两个小图标
-      const iy = app.bottom - 52;
-      const tOn = ui.button({ id: 'home-daily', x: 18, y: iy - 26, w: 64, h: 70, onTap: () => app.go('daily') });
-      drawToday(ctx, 50, iy, tOn);
-      const mOn = ui.button({ id: 'home-more', x: W - 82, y: iy - 26, w: 64, h: 70, onTap: () => app.moreSheet() });
-      drawMore(ctx, W - 50, iy, mOn);
+      // 两个小图标（图标在框的上半，字在下面）
+      const rd = LY.rect('home.daily'), ro = LY.rect('home.more');
+      const tOn = ui.button({ id: 'home-daily', x: rd.x, y: rd.y, w: rd.w, h: rd.h, onTap: () => app.go('daily') });
+      drawToday(ctx, rd.x + rd.w / 2, rd.y + 26, tOn);
+      const mOn = ui.button({ id: 'home-more', x: ro.x, y: ro.y, w: ro.w, h: ro.h, onTap: () => app.moreSheet() });
+      drawMore(ctx, ro.x + ro.w / 2, ro.y + 26, mOn);
     },
   };
 };

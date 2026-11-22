@@ -5,6 +5,7 @@ const C = require('./config.js');
 const S = require('./sudoku.js');
 const store = require('./store.js');
 const bank = require('./puzzles.js');
+const LY = require('./layout.js');
 
 module.exports = function (app) {
   // ---------- 结算 ----------
@@ -17,92 +18,86 @@ module.exports = function (app) {
     },
     live: (t) => t - res.t0 < 1200,
     ready: () => !res.fromCut || P.now() - res.t0 > 330,
+    // 位置都从布局表来（界面编辑器里能拖）：顶上的勾、标题、分数、数据卡、三个按钮、解锁主题
     draw(ctx, t) {
-      const th = app.th, W = app.W, b = res.b;
+      const th = app.th, b = res.b, R = LY.rect;
       const p = Math.min(1, (t - res.t0) / 900);
-      let y = app.headerY + 30;
+      const ri = R('result.icon'), rh = R('result.head'), rs = R('result.score'), rc = R('result.stats');
+      const rShare = R('result.share'), rAgain = R('result.again'), rHome = R('result.home'), rTheme = R('result.theme');
+      const icx = ri.x + ri.w / 2, icy = ri.y + ri.h / 2, isz = Math.min(ri.w, ri.h);
       if (res.icon) {
         // 过场里那块金方块缩在页面顶上
-        const iw = res.icon.width / app.dpr, ih = res.icon.height / app.dpr;
-        ctx.drawImage(res.icon, 0, 0, res.icon.width, res.icon.height, W / 2 - iw / 2, y + 36 - ih / 2, iw, ih);
+        const iw = res.icon.width / app.dpr, ih = res.icon.height / app.dpr, k = isz / 68;
+        ctx.drawImage(res.icon, 0, 0, res.icon.width, res.icon.height, icx - iw * k / 2, icy - ih * k / 2, iw * k, ih * k);
       } else {
         // 勾：圆从小弹到大
-        const s = ui.ease.back(Math.min(1, (t - res.t0) / 450));
-        ctx.save(); ctx.translate(W / 2, y + 36); ctx.scale(s, s);
+        const s = ui.ease.back(Math.min(1, (t - res.t0) / 450)) * isz / 68;
+        ctx.save(); ctx.translate(icx, icy); ctx.scale(s, s);
         ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2); ctx.fillStyle = th.ok; ctx.fill();
         ui.icons.check(ctx, 0, 0, 40, '#FFFFFF', 4);
         ctx.restore();
       }
-      y += 96;
+      const hk = LY.k('result.head', rh), sk = LY.k('result.score', rs), ck = LY.k('result.stats', rc);
+      const hx = rh.x + rh.w / 2, hy = rh.y + rh.h * 0.29;
       const tierName = S.TIERS[b.tier].name;
-      const half = (W - 32 - 10) / 2;
       if (b.mode === 'challenge') {
-        // ---- 好友挑战：两人对比 ----
+        // ---- 好友挑战：两人对比（两张卡放在数据卡的位置）----
         const r = app.challengeResult(b);
-        ui.text(ctx, r.win ? '你赢了！' : '差一点', W / 2, y, 28, r.win ? th.ok : th.text, 'center', 700);
-        ui.text(ctx, (r.tie ? '和朋友一样快' + (r.win ? '，错得不比他多' : '，但错得多一点') : (r.win ? '比朋友快了 ' : '比朋友慢了 ') + app.fmt(r.diff)) + ' · 「' + tierName + '」', W / 2, y + 34, 14, th.sub, 'center');
-        y += 66;
-        const cw = half, chh = 128;
+        ui.text(ctx, r.win ? '你赢了！' : '差一点', hx, hy, Math.round(28 * hk), r.win ? th.ok : th.text, 'center', 700);
+        ui.text(ctx, (r.tie ? '和朋友一样快' + (r.win ? '，错得不比他多' : '，但错得多一点') : (r.win ? '比朋友快了 ' : '比朋友慢了 ') + app.fmt(r.diff)) + ' · 「' + tierName + '」', hx, rh.y + rh.h * 0.77, Math.round(14 * hk), th.sub, 'center');
+        const cw = (rc.w - 10) / 2, chh = Math.min(rc.h, 128);
         [['你', b.elapsed, b.mistakes, r.win], ['朋友', b.challenge.time, b.challenge.mistakes, !r.win]].forEach(([who, tm, mis, best], i) => {
-          const x = 16 + i * (cw + 10);
+          const x = rc.x + i * (cw + 10), y = rc.y;
           ui.card(ctx, x, y, cw, chh, 16, th);
           if (best) { ui.rr(ctx, x, y, cw, chh, 16); ctx.strokeStyle = th.gold; ctx.lineWidth = 3; ctx.stroke(); ui.icons.trophy(ctx, x + cw - 24, y + 24, 22, th.gold, 1); }
           ui.text(ctx, who, x + 18, y + 26, 15, th.sub, 'left', 600);
           ui.text(ctx, app.fmt(tm), x + cw / 2, y + 70, 32, th.text, 'center', 700);
           ui.text(ctx, mis ? '错 ' + mis + ' 次' : '一次没错', x + cw / 2, y + 104, 13, th.sub, 'center');
         });
-        y += chh + 22;
         if (!app.scenes.result.ready()) { app.animate(400); return; } // 按钮晚 20 帧
-        ui.pill(ctx, th, 'res-reply', 16, y, W - 32, 54, r.win ? '发回去，让他再来' : '发回去挑战他', () => app.shareChallenge(b, true), 'primary');
-        y += 64;
-        ui.pill(ctx, th, 'res-again', 16, y, half, 50, '再来一局', () => app.startGame(b.tier), 'card');
-        ui.pill(ctx, th, 'res-home', 26 + half, y, half, 50, '回首页', () => app.go('home'), 'card');
-        y += 64;
+        ui.pill(ctx, th, 'res-reply', rShare.x, rShare.y, rShare.w, rShare.h, r.win ? '发回去，让他再来' : '发回去挑战他', () => app.shareChallenge(b, true), 'primary');
+        ui.pill(ctx, th, 'res-again', rAgain.x, rAgain.y, rAgain.w, rAgain.h, '再来一局', () => app.startGame(b.tier), 'card');
+        ui.pill(ctx, th, 'res-home', rHome.x, rHome.y, rHome.w, rHome.h, '回首页', () => app.go('home'), 'card');
       } else {
-      ui.text(ctx, '完成！', W / 2, y, 28, th.text, 'center', 700);
-      ui.text(ctx, (b.mode === 'daily' ? '每日挑战 · ' + b.date.slice(5).replace('-', '月') + '日 · ' : '') + tierName, W / 2, y + 34, 14, th.sub, 'center');
-      y += 70;
-      // 分数滚上去
-      const shown = res.fromCut ? b.score : Math.round(b.score * ui.ease.out(p));
-      ui.text(ctx, String(shown), W / 2, y + 20, 44, th.primary, 'center', 700);
-      ui.text(ctx, b.newBestScore ? '本档最高分！' : '分', W / 2, y + 56, 13, b.newBestScore ? th.gold : th.sub, 'center', 600);
-      y += 80;
-      // 数据
-      const st = store.data.stats[b.tier];
-      const rows = b.mode === 'daily'
-        ? [['用时', app.fmt(b.elapsed)], ['错误', String(b.mistakes)], ['本月完成', Object.keys(store.data.daily).filter((k) => k.slice(0, 7) === b.date.slice(0, 7)).length + ' 天']]
-        : [['用时', app.fmt(b.elapsed) + (b.newBest ? '  新纪录' : '')], ['本档最好', app.fmt(st.best)], ['错误', String(b.mistakes)], ['连胜', st.streak + ' 局']];
-      const rh = 40;
-      ui.card(ctx, 16, y, W - 32, rows.length * rh + 10, 16, th);
-      rows.forEach((r, i) => {
-        const ry = y + 5 + i * rh + rh / 2;
-        ui.text(ctx, r[0], 36, ry, 15, th.sub);
-        ui.text(ctx, r[1], W - 36, ry, 16, r[1].indexOf('新纪录') >= 0 ? th.gold : th.text, 'right', 600);
-      });
-      y += rows.length * rh + 10 + 18;
-      // 按钮：发给朋友挑战这一题（主按钮）；再来一局 / 回首页并排
-      if (!app.scenes.result.ready()) { app.animate(400); return; } // 按钮晚 20 帧
-      ui.pill(ctx, th, 'res-share', 16, y, W - 32, 54, '发给朋友挑战这一题', () => app.shareChallenge(b), 'primary');
-      y += 64;
-      if (b.mode === 'daily') ui.pill(ctx, th, 'res-cal', 16, y, half, 50, '回日历', () => app.go('daily'), 'card');
-      else ui.pill(ctx, th, 'res-again', 16, y, half, 50, '再来一局', () => app.startGame(b.tier), 'card');
-      ui.pill(ctx, th, 'res-home', 26 + half, y, half, 50, '回首页', () => app.go('home'), 'card');
-      y += 64;
+        ui.text(ctx, '完成！', hx, hy, Math.round(28 * hk), th.text, 'center', 700);
+        ui.text(ctx, (b.mode === 'daily' ? '每日挑战 · ' + b.date.slice(5).replace('-', '月') + '日 · ' : '') + tierName, hx, rh.y + rh.h * 0.77, Math.round(14 * hk), th.sub, 'center');
+        // 分数滚上去
+        const shown = res.fromCut ? b.score : Math.round(b.score * ui.ease.out(p));
+        ui.text(ctx, String(shown), rs.x + rs.w / 2, rs.y + rs.h * 0.33, Math.round(44 * sk), th.primary, 'center', 700);
+        ui.text(ctx, b.newBestScore ? '本档最高分！' : '分', rs.x + rs.w / 2, rs.y + rs.h * 0.83, Math.round(13 * sk), b.newBestScore ? th.gold : th.sub, 'center', 600);
+        // 数据卡：行高跟着卡的高度走
+        const st = store.data.stats[b.tier];
+        const rows = b.mode === 'daily'
+          ? [['用时', app.fmt(b.elapsed)], ['错误', String(b.mistakes)], ['本月完成', Object.keys(store.data.daily).filter((k) => k.slice(0, 7) === b.date.slice(0, 7)).length + ' 天']]
+          : [['用时', app.fmt(b.elapsed) + (b.newBest ? '  新纪录' : '')], ['本档最好', app.fmt(st.best)], ['错误', String(b.mistakes)], ['连胜', st.streak + ' 局']];
+        const rowH = (rc.h - 10) / 4;
+        ui.card(ctx, rc.x, rc.y, rc.w, rows.length * rowH + 10, 16, th);
+        rows.forEach((r, i) => {
+          const ry = rc.y + 5 + i * rowH + rowH / 2;
+          ui.text(ctx, r[0], rc.x + 20, ry, Math.round(15 * ck), th.sub);
+          ui.text(ctx, r[1], rc.x + rc.w - 20, ry, Math.round(16 * ck), r[1].indexOf('新纪录') >= 0 ? th.gold : th.text, 'right', 600);
+        });
+        // 按钮：发给朋友挑战这一题（主按钮）；再来一局 / 回首页并排
+        if (!app.scenes.result.ready()) { app.animate(400); return; } // 按钮晚 20 帧
+        ui.pill(ctx, th, 'res-share', rShare.x, rShare.y, rShare.w, rShare.h, '发给朋友挑战这一题', () => app.shareChallenge(b), 'primary');
+        if (b.mode === 'daily') ui.pill(ctx, th, 'res-cal', rAgain.x, rAgain.y, rAgain.w, rAgain.h, '回日历', () => app.go('daily'), 'card');
+        else ui.pill(ctx, th, 'res-again', rAgain.x, rAgain.y, rAgain.w, rAgain.h, '再来一局', () => app.startGame(b.tier), 'card');
+        ui.pill(ctx, th, 'res-home', rHome.x, rHome.y, rHome.w, rHome.h, '回首页', () => app.go('home'), 'card');
       }
       // 结算页的激励视频：解锁一套配色
       const locked = C.THEMES.filter((tm) => !store.data.themes[tm.id]);
       if (locked.length) {
-        const tm = locked[0];
-        const on = ui.button({ id: 'res-theme', x: 16, y, w: W - 32, h: 50, onTap: () => app.showAd('theme', '「' + tm.name + '」主题', () => {
+        const tm = locked[0], x = rTheme.x, y = rTheme.y, w = rTheme.w, h = rTheme.h;
+        const on = ui.button({ id: 'res-theme', x, y, w, h, onTap: () => app.showAd('theme', '「' + tm.name + '」主题', () => {
           store.data.themes[tm.id] = true;
           store.data.settings.theme = tm.id;
           store.save();
           app.toast('已换上「' + tm.name + '」主题，设置里可以换回');
         }) });
-        ui.fillRR(ctx, 16, y, W - 32, 50, 16, on ? th.sel : th.soft);
-        ui.icons.video(ctx, 44, y + 25, 22, th.gold);
-        ctx.beginPath(); ctx.arc(W - 44, y + 25, 11, 0, Math.PI * 2); ctx.fillStyle = tm.primary; ctx.fill();
-        ui.text(ctx, '看视频，解锁「' + tm.name + '」主题', W / 2, y + 25, 15, th.primary, 'center', 600);
+        ui.fillRR(ctx, x, y, w, h, 16, on ? th.sel : th.soft);
+        ui.icons.video(ctx, x + 28, y + h / 2, 22, th.gold);
+        ctx.beginPath(); ctx.arc(x + w - 28, y + h / 2, 11, 0, Math.PI * 2); ctx.fillStyle = tm.primary; ctx.fill();
+        ui.text(ctx, '看视频，解锁「' + tm.name + '」主题', x + w / 2, y + h / 2, 15, th.primary, 'center', 600);
       }
     },
   };

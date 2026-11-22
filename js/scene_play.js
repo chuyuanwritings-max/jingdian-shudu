@@ -9,6 +9,7 @@ const store = require('./store.js');
 const bank = require('./puzzles.js');
 const DB = require('./drawboard.js');
 const T = require('./tutorial.js');
+const LY = require('./layout.js');
 
 module.exports = function (app) {
   let b = null; // 当前这一局
@@ -20,25 +21,18 @@ module.exports = function (app) {
   let winAt = 0, saveTimer = 0, lastSec = -1;
   const geo = { x: 0, y: 0, size: 0 };
   let L = null; // 布局
-  let hintBelow = true;
 
   const resetFx = () => { fx = { pops: {}, rings: [], flash: [], shake: null, floats: [], hops: {}, keyDone: {}, events: [], gold: {}, sparks: [], digit: null, boardShake: null }; };
   let party = null; // 通关庆祝：{ t0, k }
 
+  // 位置都从布局表来（界面编辑器里能拖）：信息行、棋盘、提示卡、工具、数字键
   function layout() {
-    const W = app.W;
-    const infoY = app.headerY + app.headerH;
-    const infoBottom = infoY + 30;
-    const padH = 72, toolsH = 62;
-    const padY = app.bottom - 14 - padH;
-    const toolsY = padY - 8 - toolsH;
-    const avail = toolsY - 10 - infoBottom;
-    geo.size = Math.floor(Math.min(W - 16, avail - 8) / 9) * 9;
-    geo.x = Math.round((W - geo.size) / 2);
-    geo.y = Math.round(infoBottom + 8 + Math.max(0, (avail - 8 - geo.size) * 0.35));
-    // 提示卡放在棋盘下面的空当里（靠近大拇指）；空当不够就盖在工具行上
-    hintBelow = toolsY - (geo.y + geo.size) >= 76;
-    L = { infoY, padY, padH, toolsY, toolsH, padX: 8, keyW: (W - 16) / 9 };
+    const rb = LY.rect('play.board'), ri = LY.rect('play.info'), rt = LY.rect('play.tools'), rp = LY.rect('play.pad'), rh = LY.rect('play.hint');
+    geo.size = Math.floor(Math.min(rb.w, rb.h) / 9) * 9; // 9 的倍数，格线才清楚
+    geo.x = Math.round(rb.x + (rb.w - geo.size) / 2);
+    geo.y = Math.round(rb.y + (rb.h - geo.size) / 2);
+    L = { infoX: ri.x, infoY: ri.y, infoW: ri.w, infoH: ri.h, padX: rp.x, padY: rp.y, padW: rp.w, padH: rp.h, keyW: rp.w / 9,
+      toolsX: rt.x, toolsY: rt.y, toolsW: rt.w, toolsH: rt.h, hint: rh };
   }
 
   // ---------- 开局 / 继续 ----------
@@ -325,17 +319,17 @@ module.exports = function (app) {
 
   // ---------- 画 ----------
   function drawInfo(ctx, th) {
-    const y = L.infoY + 14, W = app.W;
+    const y = L.infoY + L.infoH / 2, x0 = L.infoX, x1 = L.infoX + L.infoW;
     const lim = store.data.settings.mistakeLimit !== false;
-    ui.text(ctx, '错误', 20, y, 13, th.sub);
-    ui.text(ctx, lim ? b.mistakes + '/' + C.RULES.maxMistakes : String(b.mistakes), 52, y, 14, b.mistakes ? th.wrong : th.text, 'left', 600);
-    ui.text(ctx, String(b.score), W / 2, y, 17, th.text, 'center', 700);
+    ui.text(ctx, '错误', x0 + 20, y, 13, th.sub);
+    ui.text(ctx, lim ? b.mistakes + '/' + C.RULES.maxMistakes : String(b.mistakes), x0 + 52, y, 14, b.mistakes ? th.wrong : th.text, 'left', 600);
+    ui.text(ctx, String(b.score), (x0 + x1) / 2, y, 17, th.text, 'center', 700);
     if (b.challenge) {
       // 好友挑战：时间旁边写着朋友的用时，超过了变红
       const over = b.elapsed > b.challenge.time;
-      ui.text(ctx, app.fmt(b.elapsed), W - 20, y - 7, 14, over ? th.wrong : th.text, 'right', 600);
-      ui.text(ctx, '朋友 ' + app.fmt(b.challenge.time), W - 20, y + 10, 11, th.sub, 'right');
-    } else if (store.data.settings.showTimer !== false) ui.text(ctx, app.fmt(b.elapsed), W - 20, y, 14, th.text, 'right', 500);
+      ui.text(ctx, app.fmt(b.elapsed), x1 - 20, y - 7, 14, over ? th.wrong : th.text, 'right', 600);
+      ui.text(ctx, '朋友 ' + app.fmt(b.challenge.time), x1 - 20, y + 10, 11, th.sub, 'right');
+    } else if (store.data.settings.showTimer !== false) ui.text(ctx, app.fmt(b.elapsed), x1 - 20, y, 14, th.text, 'right', 500);
   }
   // 带练：卡片上一行字说为什么，手指先指格子、选中以后指数字键
   function drawGuide(ctx, th, t) {
@@ -347,21 +341,21 @@ module.exports = function (app) {
     }
     const g = guide, k = g.h.place.k, v = g.h.place.v;
     const p = Math.min(1, (t - g.t0) / 220);
-    const x = 12, w = app.W - 24, hh = 64;
-    const y = (hintBelow ? geo.y + geo.size + 10 : L.toolsY + L.toolsH - hh) + (1 - ui.ease.out(p)) * 10;
+    const x = L.hint.x, w = L.hint.w, hh = L.hint.h;
+    const y = L.hint.y + (1 - ui.ease.out(p)) * 10;
     ctx.save();
     ctx.globalAlpha = p;
     ui.card(ctx, x, y, w, hh, 14, th);
     ui.text(ctx, '第 ' + (4 - b.guideLeft) + ' / 3 步', x + 16, y + 18, 12, th.primary, 'left', 700);
     ui.wrap(ctx, g.h.text.replace(/^[^：]*：/, ''), x + 16, y + 30, w - 32, 13, 17, th.text);
     ctx.restore();
-    const target = b.selected === k ? { x: 8 + (v - 0.5) * L.keyW, y: L.padY + L.padH / 2 } : (() => { const r = DB.cellRect(geo, k); return { x: r.x + r.s / 2, y: r.y + r.s / 2 }; })();
+    const target = b.selected === k ? { x: L.padX + (v - 0.5) * L.keyW, y: L.padY + L.padH / 2 } : (() => { const r = DB.cellRect(geo, k); return { x: r.x + r.s / 2, y: r.y + r.s / 2 }; })();
     ui.icons.hand(ctx, target.x + 4, target.y + 6 + Math.sin(t / 220) * 5, 44, th.text);
   }
   function drawHintCard(ctx, th, t) {
     const p = Math.min(1, (t - hint.t0) / 220);
-    const x = 12, w = app.W - 24, h = 64;
-    const y = (hintBelow ? geo.y + geo.size + 10 : L.toolsY + L.toolsH - h) + (1 - ui.ease.out(p)) * 10;
+    const x = L.hint.x, w = L.hint.w, h = L.hint.h;
+    const y = L.hint.y + (1 - ui.ease.out(p)) * 10;
     ui.button({ id: 'hint-card', x, y, w, h }); // 挡住下面的按钮
     ctx.save();
     ctx.globalAlpha = p;
@@ -386,9 +380,9 @@ module.exports = function (app) {
   // 数字键（教学也用）：opts = { y, h, onPress, counts, noteMode, disabled, highlight }
   const PAD_TILT = [-3, 2, -2, 3, -1, 2, -3, 1, 3]; // 每个键歪几度
   app.drawPad = (ctx, opts) => {
-    const th = app.th, keyW = (app.W - 16) / 9;
+    const th = app.th, px = opts.x != null ? opts.x : 8, keyW = (opts.w != null ? opts.w : app.W - 16) / 9;
     for (let v = 1; v <= 9; v++) {
-      const x = 8 + (v - 1) * keyW;
+      const x = px + (v - 1) * keyW;
       const left = opts.counts ? 9 - opts.counts[v] : null;
       const done = left === 0;
       const on = ui.button({ id: 'key-' + v, x, y: opts.y, w: keyW, h: opts.h, silent: done, onDown: done || opts.disabled ? null : () => opts.onPress(v) });
@@ -430,10 +424,10 @@ module.exports = function (app) {
     }
   };
   // 工具行（教学也用）：items = [{ id, label, icon, badge, active, onTap, highlight }]
-  app.drawTools = (ctx, y, h, items) => {
-    const th = app.th, w = (app.W - 16) / items.length;
+  app.drawTools = (ctx, y, h, items, x0, w0) => {
+    const th = app.th, tx = x0 != null ? x0 : 8, w = (w0 != null ? w0 : app.W - 16) / items.length;
     items.forEach((it, i) => {
-      const x = 8 + i * w, cx = x + w / 2;
+      const x = tx + i * w, cx = x + w / 2;
       const on = ui.button({ id: 'tool-' + it.id, x, y, w, h, onDown: it.onTap });
       if (on) ui.fillRR(ctx, cx - 30, y + 2, 60, h - 4, 14, th.soft);
       if (it.highlight) {
@@ -474,6 +468,7 @@ module.exports = function (app) {
     live: (t) => !!party || (!!hint && t - hint.t0 < 400) || (!!b && b.guided && b.guideLeft > 0) || (!!fx && (fx.sparks.length > 0 || fx.events.length > 0)),
     draw(ctx, t) {
       const th = app.th;
+      layout(); // 每帧按布局表算一次（便宜；编辑器拖动时立刻跟上）
       const tierName = S.TIERS[b.tier].name;
       const title = b.mode === 'daily' ? '每日挑战 · ' + tierName : b.mode === 'challenge' ? '好友挑战 · ' + tierName : tierName;
       app.header(ctx, title, () => { persist(); app.go(b.mode === 'daily' ? 'daily' : 'home'); }, (ctx2, y, h) => {
@@ -524,8 +519,8 @@ module.exports = function (app) {
         { id: 'erase', label: '橡皮', icon: 'eraser', onTap: () => tool('erase') },
         { id: 'note', label: '笔记', icon: 'pencil', active: noteMode, badge: { text: noteMode ? '开' : '关', color: noteMode ? th.primary : th.faint }, onTap: () => tool('note') },
         { id: 'hint', label: '提示', icon: 'bulb', badge: hintBadge, onTap: () => tool('hint') },
-      ]);
-      app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone, active: selDigit });
+      ], L.toolsX, L.toolsW);
+      app.drawPad(ctx, { x: L.padX, w: L.padW, y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone, active: selDigit });
       if (hint) drawHintCard(ctx, th, t);
       else if (b.guided && b.guideLeft > 0 && !winAt && !paused) drawGuide(ctx, th, t);
       // 通关第一段：棋盘以外硬切成近黑（点一下直接进第二段）
@@ -542,8 +537,8 @@ module.exports = function (app) {
   app.testHooks = {
     board: () => b,
     cellCenter: (k) => { const r = DB.cellRect(geo, k); return { x: r.x + r.s / 2, y: r.y + r.s / 2 }; },
-    padCenter: (v) => ({ x: 8 + (v - 0.5) * L.keyW, y: L.padY + L.padH / 2 }),
-    toolCenter: (i) => ({ x: 8 + (i + 0.5) * ((app.W - 16) / 4), y: L.toolsY + L.toolsH / 2 }),
+    padCenter: (v) => ({ x: L.padX + (v - 0.5) * L.keyW, y: L.padY + L.padH / 2 }),
+    toolCenter: (i) => ({ x: L.toolsX + (i + 0.5) * (L.toolsW / 4), y: L.toolsY + L.toolsH / 2 }),
     hint: () => hint,
     guide: () => guide,
     selDigit: () => selDigit,

@@ -36,12 +36,15 @@ function setup(onTouch) {
     const phone = window.innerWidth > 520;
     width = phone ? 390 : window.innerWidth;
     height = phone ? Math.min(844, window.innerHeight - 20) : window.innerHeight;
+    // 指定装成哪部手机（宽、高、刘海、底部安全区），比如界面编辑器切机型时
+    const dev = window.__DEVICE;
+    if (dev) { width = dev.w; height = dev.h; safeTop = dev.top || 0; safeBottom = dev.bottom || 0; }
     dpr = Math.min(3, window.devicePixelRatio || 2);
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
-    if (!phone) safeBottom = 8;
+    if (!phone && !dev) safeBottom = 8;
     const pos = (e) => {
       const r = canvas.getBoundingClientRect();
       return [e.clientX - r.left, e.clientY - r.top];

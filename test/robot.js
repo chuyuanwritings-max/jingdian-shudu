@@ -373,6 +373,44 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   ok(!!back && back.indexOf('c=3.') > 0, '朋友能「发回去挑战他」');
   await ctx2.close();
 
+  // ---------- 9b. 界面编辑模式：编辑器代码不进微信包；layout.json 改了游戏照着走 ----------
+  {
+    const root = path.join(__dirname, '..');
+    const cfg = JSON.parse(fs.readFileSync(path.join(root, 'project.config.json'), 'utf8'));
+    const ignored = cfg.packOptions.ignore.map((x) => x.value);
+    const pkg = [];
+    const walk = (dir, rel) => fs.readdirSync(dir).forEach((f) => {
+      const r = rel ? rel + '/' + f : f, full = path.join(dir, f);
+      if (ignored.indexOf(r) >= 0 || f.startsWith('.')) return;
+      if (fs.statSync(full).isDirectory()) walk(full, r); else if (/\.(js|json)$/.test(f)) pkg.push(full);
+    });
+    walk(root, '');
+    const bad = pkg.filter((f) => /__editor|editor\.js|uied-/.test(fs.readFileSync(f, 'utf8')));
+    ok(pkg.length > 10 && bad.length === 0, '编辑器代码不进微信包（查了 ' + pkg.length + ' 个包内文件' + (bad.length ? '，混进了：' + bad.map((f) => path.relative(root, f)).join('、') : '') + '）');
+    ok(ignored.indexOf('preview.html') >= 0 && ignored.indexOf('index.html') >= 0 && ignored.indexOf('comments.json') >= 0, '网页预览、评论文件都不进微信包');
+    // 用一份把大按钮往上挪 100 的布局另打一个包，看主页大按钮是不是真挪了
+    const tmpJson = path.join(require('os').tmpdir(), 'jd_layout_test.json'), tmpHtml = path.join(require('os').tmpdir(), 'jd_layout_test.html');
+    const base = JSON.parse(fs.readFileSync(path.join(root, 'layout.json'), 'utf8'));
+    const LYD = require(path.join(root, 'js', 'layout.js')).DEFS['home.main'];
+    const cur = Object.assign({ x: LYD.x, y: LYD.y, w: LYD.w, h: LYD.h }, base.elements['home.main'] || {});
+    const moved = { version: 1, elements: Object.assign({}, base.elements, { 'home.main': Object.assign({}, cur, { y: cur.y - 100 }) }) };
+    fs.writeFileSync(tmpJson, JSON.stringify(moved));
+    require('child_process').execFileSync(process.execPath, [path.join(root, 'tools', 'build-preview.js')], { env: Object.assign({}, process.env, { LAYOUT_JSON: tmpJson, OUT: tmpHtml }) });
+    const yOf = async (file) => {
+      const pg = await browser.newPage({ viewport: { width: 390, height: 844 } });
+      await pg.goto('file://' + file);
+      await pg.evaluate(() => { const s = window.__store.data; s.seen.tutorial = true; s.seen.open = true; s.level = 'pro'; window.__app.go('home'); });
+      await pg.waitForTimeout(400);
+      const y = await pg.evaluate(() => { const r = window.__regions().find((x) => x.id === 'home-main'); return r ? r.y : null; });
+      await pg.close();
+      return y;
+    };
+    const y0 = await yOf(path.join(root, 'preview.html')), y1 = await yOf(tmpHtml);
+    ok(y0 != null && y1 != null && y0 - y1 > 80, 'layout.json 把大按钮上移 100，主页大按钮真的上移了（' + Math.round(y0) + ' → ' + Math.round(y1) + '）');
+    const realMain = (require(path.join(root, 'js', 'layout_data.js')).elements || {})['home.main'];
+    ok(!realMain || realMain.y !== cur.y - 100, '测试用的布局没写进真文件');
+  }
+
   // ---------- 10. 没有报错 ----------
   ok(errors.length === 0, '没有报错' + (errors.length ? '：' + errors.slice(0, 3).join(' | ') : ''));
   console.log('\n' + pass + ' 项通过，' + fail + ' 项没过');
