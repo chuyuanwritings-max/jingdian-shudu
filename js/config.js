@@ -1,10 +1,10 @@
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.7.2';
+const VERSION = '0.7.3';
 
 // 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
 // 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
-// tileA / tileB 数字方块 [面, 厚边, 数字]：题目原有的和自己填的一样都是方块（学 Sudoku 2）。A 象牙块 + 深色字、B 彩色块 + 浅色字，先给 Cc 选
+// tileA / tileB 数字方块 [面, 厚边, 数字]：题目原有的和自己填的一样都是方块（学 Sudoku 2）。现在只用 B（深色块 + 浅色字，Cc 2026-11-22 定）；A 象牙块留着不用
 // texture 页面质地 · boardTexture 棋盘质地 · cardTexture 卡片质地 · pageDark / boardDark 底色深不深（决定颗粒用深色还是浅色）· hand 棋盘线像手画
 const THEMES = [
   {
@@ -23,7 +23,7 @@ const THEMES = [
   },
   {
     id: 'chalk', name: '黑板', free: true, texture: 'chalk', boardTexture: 'chalk', cardTexture: 'chalk', hand: true, pageDark: true, boardDark: true,
-    tileA: ['#42564D', '#18221E', '#F2F2EC'], tileB: ['#F1D46F', '#A88A2E', '#22302A'],
+    tileA: ['#42564D', '#18221E', '#F2F2EC'], tileB: ['#42564D', '#18221E', '#F2F2EC'],
     bg: '#22302A', card: '#2B3A33', board: '#2B3A33', text: '#EEF0EA', sub: '#A3B0A8', faint: '#5A6B62',
     given: '#F2F2EC', user: '#F3D46B', wrong: '#FF8F85', note: '#C3CEC7', lineBold: '#D7DED9', lineThin: '#4B5C54',
     primary: '#F3D46B', primaryText: '#22302A', soft: '#384941', sel: '#4C5E55', glow: '#FFF0A8', gold: '#F3D46B', shadow: 'rgba(0,0,0,0.3)', ok: '#93DAA2',
@@ -37,7 +37,7 @@ const THEMES = [
   },
   {
     id: 'ink', name: '宣纸水墨', free: false, texture: 'rice', boardTexture: 'rice', cardTexture: 'rice', hand: true,
-    tileA: ['#FCF7EC', '#C9BA98', '#1E1B18'], tileB: ['#A3302A', '#661B17', '#FBF4E6'],
+    tileA: ['#FCF7EC', '#C9BA98', '#1E1B18'], tileB: ['#2E2A26', '#121010', '#F4EDDC'],
     bg: '#E8DFCB', card: '#F4EDDC', board: '#F4EDDC', text: '#2A2622', sub: '#7E7466', faint: '#BFB39C',
     given: '#1E1B18', user: '#2B4A6F', wrong: '#B8322A', note: '#6D6255', lineBold: '#2E2A26', lineThin: '#D2C6AD',
     primary: '#9E2B25', primaryText: '#FBF4E6', soft: '#E9DCC8', sel: '#E2C9B5', glow: '#D9876F', gold: '#B8862E', shadow: 'rgba(60,40,20,0.09)', ok: '#4E8A5E',

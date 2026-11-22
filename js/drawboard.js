@@ -86,10 +86,11 @@ function linesLayer(geo, th, dpr, hand) {
 // 数字方块：影子（两层半透明，不用模糊，省电）→ 厚边 → 面 → 顶上一条高光 → 数字。
 // 刚放下的那 0.32 秒：从上面大一点落下（影子由远变近），落地压扁一下再弹回。
 function tile(ctx, th, m, cx, cy, cs, v, wrong, p0, t, same, gold, extra) {
-  const style = m.tileStyle === 'B' ? 'B' : 'A';
+  const style = 'B'; // Cc 2026-11-22 定：深色块 + 浅色字（像 Sudoku 2 的原木）。tileA 留在配置里不再用
   const pal = th[style === 'B' ? 'tileB' : 'tileA'] || ['#FFFFFF', '#CCCCCC', th.user];
   let body = pal[0], edge = pal[1], ink = pal[2];
   if (gold) { body = '#E9C25A'; edge = '#A9832A'; ink = '#3A2A08'; } // 金面：某个数填完、通关波浪
+  else if (same) { body = YELLOW; edge = '#B8890F'; ink = '#3A2A08'; } // 和点中的数字一样：整块亮黄（深色块上看得最清楚）
   if (wrong) {
     if (style === 'B') { body = th.wrong; edge = Paper.rgba('#000000', 0.35); ink = '#FFFFFF'; }
     else { body = th.boardDark ? '#5A3434' : '#FCE6E3'; edge = th.boardDark ? '#2A1616' : '#E2B2AC'; ink = th.wrong; }
@@ -115,11 +116,6 @@ function tile(ctx, th, m, cx, cy, cs, v, wrong, p0, t, same, gold, extra) {
   ui.fillRR(ctx, cx + inset, cy + inset + thick, w, h, 6, edge);
   ui.fillRR(ctx, cx + inset, cy + inset, w, h, 6, body);
   ui.fillRR(ctx, cx + inset + 3, cy + inset + 1.5, w - 6, Math.max(1.5, cs * 0.045), 1, style === 'B' || th.boardDark ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.85)');
-  if (same) {
-    // 和点中的数字一样：方块整块染一层黄，再描一圈黄边
-    ui.fillRR(ctx, cx + inset, cy + inset, w, h, 6, Paper.rgba(YELLOW, 0.38));
-    ui.rr(ctx, cx + inset - 1, cy + inset - 1, w + 2, h + thick + 2, 7); ctx.strokeStyle = YELLOW_EDGE; ctx.lineWidth = 2.5; ctx.stroke();
-  }
   ui.text(ctx, String(v), x0, cy + inset + h / 2 + 1, Math.round(cs * 0.54), ink, 'center', style === 'B' ? 600 : 500);
   ctx.restore();
 }
