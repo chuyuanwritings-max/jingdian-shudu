@@ -264,6 +264,8 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await shot('26_发给朋友_卡片预览');
   const shareUrl = await ev(() => window.__app.lastShare && window.__app.lastShare.url);
   ok(!!shareUrl && shareUrl.indexOf('c=3.') > 0 && shareUrl.indexOf('p=') > 0, '结算页「发给朋友挑战」生成挑战链接');
+  const shareTitle = await ev(() => window.__app.lastShare && window.__app.lastShare.title);
+  ok(!!shareTitle && !/\d+:\d\d/.test(shareTitle) && shareTitle.indexOf('做完才看得到') >= 0, '挑战卡不写自己的用时（做完才揭晓）：' + shareTitle);
   await page.mouse.click(195, 60); // 点上面空白处关掉
   await page.waitForTimeout(300);
   const stats = await ev(() => window.__store.data.stats);
@@ -351,7 +353,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   }
   await tap2('lf-challenge', 600);
   let cb = await ev2(() => { const b = window.__app.testHooks.board(); return { mode: b.mode, guided: b.guided, ch: b.challenge, tier: b.tier }; });
-  ok(cb.mode === 'challenge' && cb.guided && cb.ch && cb.tier === 3, '学完规则 → 做朋友那一题（困难），前 3 步带着走，顶上有朋友的用时');
+  ok(cb.mode === 'challenge' && cb.guided && cb.ch && cb.tier === 3, '学完规则 → 做朋友那一题（困难），前 3 步带着走（朋友用时做完才揭晓）');
   await p2.waitForTimeout(300);
   await shot2('31_朋友端_带练挑战');
   // 朋友用真点击做完
@@ -372,6 +374,25 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   const back = await ev2(() => window.__app.lastShare && window.__app.lastShare.url);
   ok(!!back && back.indexOf('c=3.') > 0, '朋友能「发回去挑战他」');
   await ctx2.close();
+
+  // ---------- 9a. 本局一招：中等从一招题库出，填对关键格算一次 ----------
+  {
+    const FB = require(path.join(__dirname, '..', 'js', 'focus_bank.js'));
+    await ev(() => { window.__store.data.current = null; window.__store.data.lessons.pointing = true; window.__app.overlays.length = 0; window.__app.startGame(2, { skipGate: true }); });
+    await page.waitForTimeout(700);
+    const fb = await ev(() => { const b = window.__app.testHooks.board(); return { idx: b.idx, focus: b.focus, sol: b.sol }; });
+    const fromBank = !FB[2].length || fb.idx >= 1000;
+    ok(fromBank && fb.focus && fb.focus.name === '区块排除' && fb.focus.keys.length >= (FB[2].length ? 3 : 1), '中等开局：本局一招「区块排除」，这一盘有 ' + (fb.focus ? fb.focus.keys.length : 0) + ' 处要用它' + (FB[2].length ? '（一招题库第 ' + (fb.idx - 999) + ' 题）' : ''));
+    ok(!!(await regionOf('focus-chip')), '棋盘上方有「本局一招」小条');
+    const k = fb.focus.keys[0];
+    await click(await ev((k) => window.__app.testHooks.cellCenter(k), k), 80);
+    await click(await ev((v) => window.__app.testHooks.padCenter(v), +fb.sol[k]), 500);
+    ok((await ev(() => window.__app.testHooks.board().focus.got.length)) === 1, '填对一个关键格：「区块排除」记一次');
+    await shot('33_本局一招_用上一次');
+    await tap('focus-chip', 400);
+    ok(!!(await regionOf('focus-learn')), '点小条：讲这一招，能去学');
+    await tap('focus-ok', 300);
+  }
 
   // ---------- 9b. 界面编辑模式：编辑器代码不进微信包；layout.json 改了游戏照着走 ----------
   {

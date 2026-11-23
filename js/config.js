@@ -1,6 +1,6 @@
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.7.4';
+const VERSION = '0.8';
 
 // 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
 // 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
@@ -111,4 +111,13 @@ const HOME_LIGHT = {
   mask: '238,230,208', maskTop: 0.55, maskBot: 0.7, panel: 'rgba(242,232,212,0.95)', card: 'rgba(246,241,228,0.96)', cardOn: 'rgba(224,214,188,0.98)', cardLine: 'rgba(20,26,23,0.22)', flash: '#E0B040',
 };
 
-module.exports = { CUT, HOME_ART, HOME, HOME_LIGHT, VERSION, THEMES, SCORE, speedMultiplier, RULES, ADS, DAILY_TIER };
+// 「本局一招」（Cc 2026-11-23：「每一盘学会一招……有的局数里用某些招数特别好用」）
+// 每档一招：lesson = 教学课 id（「看一下怎么用」去这一课）；techs = 解题器里算这一招的名字；min = 一招题库里每题至少要用几次
+// 入门的排除法几乎每一步都用，不另出题；专家、大师还没有对应的课，先不标
+const FOCUS = {
+  0: { lesson: 'hatch', name: '排除法', techs: ['hiddenBox'], min: 0 },
+  1: { lesson: 'naked', name: '唯一候选', techs: ['nakedSingle'], min: 3 },
+  2: { lesson: 'pointing', name: '区块排除', techs: ['pointing', 'claiming'], min: 3 },
+  3: { lesson: 'pair', name: '数对', techs: ['nakedPair', 'hiddenPair'], min: 2 },
+};
+module.exports = { FOCUS, CUT, HOME_ART, HOME, HOME_LIGHT, VERSION, THEMES, SCORE, speedMultiplier, RULES, ADS, DAILY_TIER };

@@ -296,6 +296,25 @@ function grade(grid, maxLevel) {
   return { solved: false, level, steps, hardSteps };
 }
 
+// 「本局一招」的关键格：一直用最简单能用的招解到底，记下哪些格子是「非用这一招不可」才填得出来的。
+// 填数的招（排除法、唯一候选）：解题器用它填的格子就是关键格（更简单的招都用不上时才轮到它）。
+// 删候选的招（区块排除、数对）：用完它以后填出的第一格算一个关键格（就是这一招解开的那一格）。
+function focusCells(grid, techs) {
+  const st = makeState(grid), keys = [];
+  let pending = false;
+  for (let guard = 0; guard < 400 && !st.g.every(Boolean); guard++) {
+    const s = nextStep(st, 5);
+    if (!s) break;
+    const mine = techs.indexOf(s.tech) >= 0;
+    if (s.place) {
+      if (mine || pending) keys.push(s.place.k);
+      pending = false;
+    } else if (mine) pending = true;
+    applyStep(st, s);
+  }
+  return keys;
+}
+
 // ---------- 暴力：数解、出完整解 ----------
 function candMask(g, k) {
   let m = ALL;
@@ -422,6 +441,7 @@ function hintText(step, place) {
 }
 
 module.exports = {
+  focusCells,
   ROW, COL, BOX, UNITS, UNITS_OF, PEERS, ALL, bit, popcount, digits, TIERS, TECH,
   makeState, place, applyStep, nextStep, grade, countSolutions, solve, rng, shuffle,
   randomSolution, makePuzzle, encode, decode, hintFor, candMask, MIN_GIVENS,

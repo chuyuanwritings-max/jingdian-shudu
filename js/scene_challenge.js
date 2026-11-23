@@ -48,8 +48,9 @@ module.exports = function (app) {
   // 发挑战：mine = 我这一局（board）
   app.shareChallenge = (b, isReply) => {
     const tn = S.TIERS[b.tier].name;
-    const title = isReply ? '我 ' + app.fmt(b.elapsed) + ' 解开了这题，该你了' : '我 ' + app.fmt(b.elapsed) + ' 解开了这题「' + tn + '」数独，你来试试？';
-    const img = app.makeShareImage(b, ['我 ' + app.fmt(b.elapsed), '解开了这题'], '「' + tn + '」数独\n同一道题，你来试试？');
+    // 用时先不说（Cc：「她做完成功之后，才看得到我的时间」）：做完这一题才揭晓
+    const title = isReply ? '我也解开了这题，该你了（做完才看得到我的用时）' : '我解开了这题「' + tn + '」数独，你来试试？做完才看得到我的用时';
+    const img = app.makeShareImage(b, ['我解开了', '这一题'], '「' + tn + '」数独\n做完才揭晓我的用时');
     const q = encode(b);
     if (P.shareToWx(title, q, P.canvasImage(img))) return;
     // 浏览器预览：弹一个分享窗，给 Cc 看朋友会收到什么，能复制链接或用手机自带的分享
@@ -104,9 +105,10 @@ module.exports = function (app) {
       const fresh = !store.data.seen.tutorial;
       app.header(ctx, '好友挑战', () => app.go(fresh ? 'welcome' : 'home'));
       let y = app.headerY + app.headerH + 16;
-      ui.text(ctx, '你的朋友用', W / 2, y + 10, 15, th.sub, 'center');
-      ui.text(ctx, app.fmt(ch.time), W / 2, y + 52, 44, th.primary, 'center', 700);
-      ui.text(ctx, '解开了这道「' + S.TIERS[ch.tier].name + '」数独' + (ch.mistakes ? '，错了 ' + ch.mistakes + ' 次' : '，一次没错'), W / 2, y + 92, 15, th.text, 'center', 600);
+      // 朋友的用时先藏着，做完才揭晓
+      ui.text(ctx, '你的朋友解开了', W / 2, y + 10, 15, th.sub, 'center');
+      ui.text(ctx, '这道「' + S.TIERS[ch.tier].name + '」数独', W / 2, y + 50, 30, th.primary, 'center', 700);
+      ui.text(ctx, '他用了多久？做完这一题才揭晓', W / 2, y + 92, 15, th.text, 'center', 600);
       y += 118;
       const avail = app.bottom - 16 - y - (fresh ? 170 : 110);
       const size = Math.max(180, Math.min(W - 64, Math.floor(avail / 9) * 9));

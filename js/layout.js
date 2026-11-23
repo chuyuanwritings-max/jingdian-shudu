@@ -15,6 +15,7 @@ const DEFS = {
   'home.more': { name: '更多', screen: 'home', x: 293, y: 700, w: 64, h: 70, ax: 'r', ay: 'b' },
   // 棋盘（局内）
   'play.info': { name: '错误 / 分数 / 时间', screen: 'play', x: 0, y: 92, w: 375, h: 30, ax: 's', ay: 't' },
+  'play.focus': { name: '本局一招', screen: 'play', x: 92, y: 130, w: 190, h: 30, ax: 'c', ay: 't' },
   'play.board': { name: '棋盘', screen: 'play', x: 12, y: 176, w: 351, h: 351, ax: 'c', ay: 'm' },
   'play.hint': { name: '提示卡（出提示时才有）', screen: 'play', x: 12, y: 537, w: 351, h: 64, ax: 's', ay: 'm' },
   'play.tools': { name: '工具（撤销 / 橡皮 / 笔记 / 提示）', screen: 'play', x: 8, y: 622, w: 359, h: 62, ax: 's', ay: 'b' },

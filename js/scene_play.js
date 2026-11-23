@@ -7,6 +7,7 @@ const S = require('./sudoku.js');
 const Board = require('./board.js');
 const store = require('./store.js');
 const bank = require('./puzzles.js');
+const focusBank = require('./focus_bank.js');
 const DB = require('./drawboard.js');
 const T = require('./tutorial.js');
 const LY = require('./layout.js');
@@ -47,16 +48,24 @@ module.exports = function (app) {
       app.tierGate(tier, need);
       return;
     }
-    let idx, mode = opts.mode || 'normal';
-    if (mode === 'daily') idx = opts.idx;
-    else {
+    let idx, mode = opts.mode || 'normal', puzzle;
+    const fb = focusBank[tier];
+    if (mode === 'daily') { idx = opts.idx; puzzle = bank[tier][idx]; }
+    else if (fb && fb.length && !opts.guided) {
+      // 本局一招：简单 / 中等 / 困难从「一招题库」按顺序出（每题这一档那一招都要用好几次）；题号从 1000 起，和主题库分开
+      const nf = store.data.nextFocus || (store.data.nextFocus = {});
+      const i = (nf[tier] || 0) % fb.length;
+      nf[tier] = (i + 1) % fb.length;
+      idx = 1000 + i; puzzle = fb[i];
+    } else {
       const half = Math.floor(bank[tier].length / 2);
       idx = store.data.next[tier] % half;
       store.data.next[tier] = (idx + 1) % half;
+      puzzle = bank[tier][idx];
     }
     store.startGame(tier, mode);
     if (mode === 'normal' && !opts.guided) store.data.lastTier = tier;
-    const nb = Board.create({ mode, tier, idx, date: opts.date, puzzle: bank[tier][idx], guided: opts.guided });
+    const nb = Board.create({ mode, tier, idx, date: opts.date, puzzle, guided: opts.guided });
     store.data.current = nb;
     store.save();
     app.go('play', { board: nb });
@@ -92,7 +101,7 @@ module.exports = function (app) {
     const r = Board.input(b, k, v, noteMode, store.data.settings);
     const t = P.now();
     if (r.kind === 'note') { app.sound('note'); }
-    else if (r.kind === 'correct') onCorrect(k, v, r, t);
+    else if (r.kind === 'correct') onCorrect(k, v, r, t, false);
     else if (r.kind === 'wrong') {
       fx.shake = { k, t0: t };
       app.sound('wrong');
@@ -105,8 +114,14 @@ module.exports = function (app) {
     }
     persist();
   }
-  function onCorrect(k, v, r, t) {
+  function onCorrect(k, v, r, t, viaHint) {
     hint = null;
+    // 本局一招：自己填对一个关键格 → 小条亮一下 + 格子上飘「区块排除 ✓」（入门每一步都是排除法，只计数不飘字）；全用上了响一声和弦
+    if (!viaHint && Board.focusHit(b, k)) {
+      fx.focusAt = t;
+      if (b.tier > 0) fx.floats.push({ k, t0: t + 260, text: b.focus.name + ' ✓', focus: true });
+      if (b.focus.got.length === b.focus.keys.length && !r.win) later(420, () => app.sound('chord', 0.5));
+    }
     if (b.guided && b.guideLeft > 0) {
       b.guideLeft--;
       guide = null;
@@ -221,6 +236,7 @@ module.exports = function (app) {
     const firstEver = !store.data.seen.firstClear;
     const firstTier = !(store.data.seen.clearTier || {})[b.tier];
     store.recordWin(b);
+    if (b.focus) { const tu = store.data.techUses || (store.data.techUses = {}); tu[b.focus.lesson] = (tu[b.focus.lesson] || 0) + b.focus.got.length; }
     store.data.seen.firstClear = true;
     store.data.seen.clearTier = Object.assign({}, store.data.seen.clearTier, { [b.tier]: true });
     store.save();
@@ -313,7 +329,7 @@ module.exports = function (app) {
     hint = null;
     b.selected = k;
     const r = Board.fillHint(b, k, v);
-    onCorrect(k, v, r, P.now());
+    onCorrect(k, v, r, P.now(), true);
     persist();
   }
 
@@ -325,11 +341,45 @@ module.exports = function (app) {
     ui.text(ctx, lim ? b.mistakes + '/' + C.RULES.maxMistakes : String(b.mistakes), x0 + 52, y, 14, b.mistakes ? th.wrong : th.text, 'left', 600);
     ui.text(ctx, String(b.score), (x0 + x1) / 2, y, 17, th.text, 'center', 700);
     if (b.challenge) {
-      // 好友挑战：时间旁边写着朋友的用时，超过了变红
-      const over = b.elapsed > b.challenge.time;
-      ui.text(ctx, app.fmt(b.elapsed), x1 - 20, y - 7, 14, over ? th.wrong : th.text, 'right', 600);
-      ui.text(ctx, '朋友 ' + app.fmt(b.challenge.time), x1 - 20, y + 10, 11, th.sub, 'right');
+      // 好友挑战：朋友的用时先藏着，做完才揭晓
+      ui.text(ctx, app.fmt(b.elapsed), x1 - 20, y - 7, 14, th.text, 'right', 600);
+      ui.text(ctx, '朋友 做完揭晓', x1 - 20, y + 10, 11, th.sub, 'right');
     } else if (store.data.settings.showTimer !== false) ui.text(ctx, app.fmt(b.elapsed), x1 - 20, y, 14, th.text, 'right', 500);
+  }
+  // 本局一招：信息行下面一个小条「本局一招 · 区块排除 1/3」；全用上了变金；点一下讲这一招、能去学
+  function drawFocus(ctx, th, t) {
+    const f = b.focus;
+    if (!f || b.guided) return;
+    const r = LY.rect('play.focus'), kk = LY.k('play.focus', r);
+    const all = f.got.length >= f.keys.length, many = f.keys.length > 9;
+    const pulse = fx.focusAt ? Math.max(0, 1 - (t - fx.focusAt) / 500) : 0;
+    const on = ui.button({ id: 'focus-chip', x: r.x, y: r.y, w: r.w, h: r.h, onTap: () => focusSheet() });
+    ctx.save();
+    const s = 1 + 0.08 * Math.sin(pulse * Math.PI) - (on ? 0.03 : 0);
+    ctx.translate(r.x + r.w / 2, r.y + r.h / 2); ctx.scale(s, s); ctx.translate(-r.x - r.w / 2, -r.y - r.h / 2);
+    ui.fillRR(ctx, r.x, r.y, r.w, r.h, r.h / 2, all ? th.gold : th.soft);
+    if (pulse > 0 && !all) { ctx.globalAlpha = pulse * 0.6; ui.fillRR(ctx, r.x, r.y, r.w, r.h, r.h / 2, th.gold); ctx.globalAlpha = 1; }
+    const label = '本局一招 · ' + f.name + '  ' + (many && !all ? f.got.length + ' 次' : f.got.length + '/' + f.keys.length) + (all ? ' ✓' : '');
+    ui.text(ctx, label, r.x + r.w / 2, r.y + r.h / 2, Math.round(13 * kk), all ? '#FFFFFF' : th.text, 'center', 600);
+    ctx.restore();
+    if (pulse > 0) app.animate(60);
+  }
+  function focusSheet() {
+    const f = b.focus, F = T.LESSONS.find((x) => x.id === f.lesson);
+    app.push({
+      onBackdrop: () => app.pop(),
+      draw(ctx, t, p) {
+        const th = app.th;
+        const m = app.modal(ctx, p, 236);
+        ui.text(ctx, '本局一招：' + f.name, app.W / 2, m.y + 38, 20, th.text, 'center', 700);
+        ui.text(ctx, F ? F.sub : '', app.W / 2, m.y + 70, 14, th.sub, 'center');
+        ui.text(ctx, f.keys.length > 9 ? '这一盘全靠它，已经用上 ' + f.got.length + ' 次' : '这一盘有 ' + f.keys.length + ' 处非用它不可，你已经用上 ' + f.got.length + ' 处', app.W / 2, m.y + 98, 13, th.text, 'center');
+        const bx = m.x + 20, bw = m.w - 40;
+        ui.pill(ctx, th, 'focus-learn', bx, m.y + 122, bw, 48, '看一下怎么用（1 分钟）', () => { app.pop(); persist(); app.go('lesson', { id: f.lesson, returnTo: 'play' }); }, 'primary');
+        ui.pill(ctx, th, 'focus-ok', bx, m.y + 178, bw, 42, '知道了', () => app.pop(), 'card');
+        m.done();
+      },
+    });
   }
   // 带练：卡片上一行字说为什么，手指先指格子、选中以后指数字键
   function drawGuide(ctx, th, t) {
@@ -453,6 +503,12 @@ module.exports = function (app) {
       noteMode = false; paused = false; hint = null; winAt = 0; party = null; guide = null; selDigit = 0;
       resetFx();
       layout();
+      // 新的一局：先说一句这盘练哪一招
+      if (b.focus && !b.focusShown && !b.guided) {
+        b.focusShown = true;
+        const f = b.focus;
+        setTimeout(() => app.toast('本局一招：' + f.name + (f.keys.length > 9 ? '\n这一盘全靠它' : '\n这一盘有 ' + f.keys.length + ' 处要用它'), 2600), 350);
+      }
     },
     leave() { persist(); },
     onHide() { if (b && !b.done && !winAt) { paused = true; persist(); app.redraw(); } },
@@ -478,6 +534,7 @@ module.exports = function (app) {
         (paused ? ui.icons.play : ui.icons.pause)(ctx, x + 22, y + h / 2, 22, th.text);
       });
       drawInfo(ctx, th);
+      drawFocus(ctx, th, t);
 
       // 棋盘（按下就选中）
       ui.button({ id: 'board', x: geo.x, y: geo.y, w: geo.size, h: geo.size, silent: true, onDown: (x, y) => select(DB.cellAt(geo, x, y)) });
@@ -508,7 +565,7 @@ module.exports = function (app) {
         if (t < f.t0) continue;
         const p = (t - f.t0) / 800, r = DB.cellRect(geo, f.k);
         ctx.globalAlpha = p < 0.7 ? 1 : (1 - p) / 0.3;
-        ui.text(ctx, f.text, r.x + r.s / 2, r.y - 6 - ui.ease.out(p) * 26, 14, th.primary, 'center', 700);
+        ui.text(ctx, f.text, r.x + r.s / 2, r.y - 6 - ui.ease.out(p) * 26 - (f.focus ? 16 : 0), f.focus ? 13 : 14, f.focus ? th.gold : th.primary, 'center', 700);
         ctx.globalAlpha = 1;
       }
 

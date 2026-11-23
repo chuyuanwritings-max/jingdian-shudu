@@ -6,7 +6,12 @@ const C = require('./config.js');
 function create(opts) {
   const puzzle = S.decode(opts.puzzle);
   const sol = opts.solution ? S.decode(opts.solution) : S.solve(puzzle);
+  // 本局一招：这一档那一招「非用不可」的关键格（带练局不标，免得和手指抢注意力）
+  const F = !opts.guided && C.FOCUS && C.FOCUS[opts.tier || 0];
+  let focus = null;
+  if (F) { const keys = S.focusCells(puzzle, F.techs); if (keys.length) focus = { lesson: F.lesson, name: F.name, keys, got: [] }; }
   return {
+    focus,
     mode: opts.mode || 'normal', tier: opts.tier || 0, idx: opts.idx || 0, date: opts.date || '',
     puzzle: opts.puzzle, sol: sol.join(''),
     vals: puzzle.slice(), given: puzzle.map(Boolean), notes: new Array(81).fill(0),
@@ -16,6 +21,14 @@ function create(opts) {
     // 带练局（新人第一局）：前 guideLeft 步手指带着走，提示不限次数
     guided: !!opts.guided, guideLeft: opts.guided ? 3 : 0,
   };
+}
+
+// 填对了一个关键格：记一次「用上了这一招」。返回 true = 这一次算数
+function focusHit(b, k) {
+  const f = b.focus;
+  if (!f || f.keys.indexOf(k) < 0 || f.got.indexOf(k) >= 0) return false;
+  f.got.push(k);
+  return true;
 }
 
 const solAt = (b, k) => +b.sol[k];
@@ -124,4 +137,4 @@ function revive(b) {
   b.revives++;
 }
 
-module.exports = { create, input, erase, undo, findHint, fillHint, revive, counts, rightGrid, isRight, isWrong, locked, solAt };
+module.exports = { focusHit, create, input, erase, undo, findHint, fillHint, revive, counts, rightGrid, isRight, isWrong, locked, solAt };
