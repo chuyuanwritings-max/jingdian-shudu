@@ -1,12 +1,12 @@
 // 小樱（0.10，Cc：「帮我设计一个小角色叫小樱，放在右上角教我、鼓励我、给我加油，并且由她来认出我使用了哪些技法，要带一点拟人的感觉」）
-// 人设见 ../小樱_角色设计_1.0.md。立绘还没生出来之前，用代码画一个「几笔墨线」的简笔小樱占位（和主页图同一路：墨线 + 琥珀 + 一点樱花粉）。
-// 立绘到了以后放进 images/sakura_<表情>.png，SPRITES 里填上，这里自动换成图。
+// 人设见 ../小樱_角色设计_1.0.md。立绘在 images/sakura_<表情>.png；图没加载出来时用代码画的简笔小樱顶上。
 // 用法：S.say(文字, 表情, 毫秒)；每帧 S.draw(ctx, 框, t, 主题)。表情：idle 平常 / happy 开心 / wow 哇 / cheer 加油 / worry 担心 / think 想一想
 const P = require('./platform.js');
 const ui = require('./ui.js');
 
 const INK = '#1C2320', PINK = '#F2A7B8', PINK2 = '#E07C96', AMBER = '#E0B040', SKIN = '#FBEFE2', HAIR = '#2B2F38';
-const SPRITES = {}; // { happy: 'images/sakura_happy.png', ... } 立绘到了填这里
+// 立绘（2026-11-24 Cc 选：全身 1 + 表情 1，Gemini 生图，Kira 抠图切成六个表情头像）
+const SPRITES = { idle: 'images/sakura_idle.png', happy: 'images/sakura_happy.png', wow: 'images/sakura_wow.png', cheer: 'images/sakura_cheer.png', worry: 'images/sakura_worry.png', think: 'images/sakura_think.png' };
 const imgs = {};
 
 let line = null; // { text, mood, t0, dur }
