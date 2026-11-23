@@ -76,6 +76,7 @@ module.exports = function (app) {
     ['mistakeLimit', '错 3 次算输', '关掉就不限次数'],
     ['autoNotes', '自动擦笔记', '填对一个数，同行同列同宫的这个笔记擦掉'],
     ['sameHighlight', '高亮相同数字', ''],
+    ['chainLight', '填对时闪过思路', '一道光走一遍：这一格是怎么想出来的'],
     ['reduceMotion', '简洁动效', '过场只播短的，不震屏、不闪'],
     ['showTimer', '显示计时', ''],
     ['sound', '声音', ''],
@@ -91,7 +92,8 @@ module.exports = function (app) {
   app.settingsSheet = (back) => app.push({
     onBackdrop: () => app.pop(),
     draw(ctx, t, p) {
-      const th = app.th, rowH = 50;
+      // 小屏（iPhone SE）行矮一点，整张面板放得下
+      const th = app.th, rowH = Math.max(40, Math.min(50, Math.floor((app.H * 0.94 - 56 - 62 - 66 - (app.H - app.bottom)) / TOGGLES.length)));
       const h = 56 + rowH * TOGGLES.length + 62 + 66 + (app.H - app.bottom);
       const y = sheet(ctx, p, h, '设置');
       const set = store.data.settings;
@@ -107,8 +109,8 @@ module.exports = function (app) {
             app.sound('tap');
           },
         });
-        ui.text(ctx, label, 24, ry + (sub ? 17 : rowH / 2), 16, th.text, 'left', 500);
-        if (sub) ui.text(ctx, sub, 24, ry + 36, 12, th.sub);
+        ui.text(ctx, label, 24, ry + (sub ? rowH * 0.34 : rowH / 2), 16, th.text, 'left', 500);
+        if (sub) ui.text(ctx, sub, 24, ry + rowH * 0.72, 12, th.sub);
         toggle(ctx, app.W - 72, ry + rowH / 2 - 14, set[key] !== false, th);
       });
       // 主题（颜色 + 质地一整套，单独一页，能实时预览）

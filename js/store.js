@@ -17,7 +17,7 @@ const data = Object.assign({
   next: [0, 0, 0, 0, 0, 0], // 每档下一题从题库第几题开始
 }, P.load(KEY) || {});
 // 老存档缺的字段补上（设置要逐项补，不然老存档会把新加的开关整个盖掉）
-const SETTINGS = { mistakeLimit: true, autoNotes: true, sameHighlight: true, showTimer: true, sound: true, vibrate: true, theme: 'paper', tileStyle: 'B', reduceMotion: false };
+const SETTINGS = { mistakeLimit: true, autoNotes: true, sameHighlight: true, showTimer: true, sound: true, vibrate: true, theme: 'paper', tileStyle: 'B', reduceMotion: false, chainLight: true };
 data.settings = Object.assign({}, SETTINGS, data.settings || {});
 // 0.1 / 0.2 的老主题名换成新的；免费主题一定在
 const OLD_THEME = { morning: 'paper', night: 'chalk', mint: 'paper', apricot: 'paper', lilac: 'paper' };

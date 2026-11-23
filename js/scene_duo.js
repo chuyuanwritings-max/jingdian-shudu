@@ -36,8 +36,8 @@ module.exports = function (app) {
       draw(ctx, t, p) {
         const th = app.th, W = app.W;
         const h = 330 + (app.H - app.bottom);
-        const y = app.sheet(ctx, p, h, '约好友一起做');
-        ui.text(ctx, '同一道题，到点两边同时开始，各算各的用时', W / 2, y + 62, 13, th.sub, 'center');
+        const y = app.sheet(ctx, p, h, '约好友对战');
+        ui.text(ctx, '同一道题，到点两边同时开始，比谁快', W / 2, y + 62, 13, th.sub, 'center');
         ui.text(ctx, '难度', 20, y + 92, 13, th.sub, 'left', 600);
         const gap = 6, cw = (W - 32 - gap * 5) / 6;
         S.TIERS.forEach((tr, i) => {

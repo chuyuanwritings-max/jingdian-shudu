@@ -311,7 +311,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await more('stats');
   await shot('29_战绩');
   await tap('hdr-back', 400);
-  await more('rank');
+  await tap('home-rank', 400);
   await shot('30_好友榜_浏览器里');
   ok((await scene()) === 'rank', '好友榜页能打开');
 
@@ -384,10 +384,17 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     const fromBank = !FB[2].length || fb.idx >= 1000;
     ok(fromBank && fb.focus && fb.focus.name === '区块排除' && fb.focus.keys.length >= (FB[2].length ? 3 : 1), '中等开局：本局一招「区块排除」，这一盘有 ' + (fb.focus ? fb.focus.keys.length : 0) + ' 处要用它' + (FB[2].length ? '（一招题库第 ' + (fb.idx - 999) + ' 题）' : ''));
     ok(!!(await regionOf('focus-chip')), '棋盘上方有「本局一招」小条');
-    const k = fb.focus.keys[0];
-    await click(await ev((k) => window.__app.testHooks.cellCenter(k), k), 80);
-    await click(await ev((v) => window.__app.testHooks.padCenter(v), +fb.sol[k]), 500);
-    ok((await ev(() => window.__app.testHooks.board().focus.got.length)) === 1, '填对一个关键格：「区块排除」记一次');
+    // 照解题顺序用真点击填到第一个关键格前，再填关键格：这时候它正是「非用区块排除不可」
+    const SS = require(path.join(__dirname, '..', 'js', 'sudoku.js'));
+    const pz = await ev(() => window.__app.testHooks.board().puzzle);
+    const stp = SS.makeState(SS.decode(pz)), path9 = [];
+    for (let g = 0; g < 400; g++) { const s2 = SS.nextStep(stp, 5); if (!s2) break; if (s2.place) { path9.push(s2.place); if (s2.place.k === fb.focus.keys[0]) break; } SS.applyStep(stp, s2); }
+    for (const pl of path9) {
+      await click(await ev((k) => window.__app.testHooks.cellCenter(k), pl.k), 15);
+      await click(await ev((v) => window.__app.testHooks.padCenter(v), pl.v), 20);
+    }
+    await page.waitForTimeout(500);
+    ok((await ev(() => window.__app.testHooks.board().focus.got.length)) >= 1, '照顺序填到关键格：小樱认出「区块排除」，记一次（前面填了 ' + (path9.length - 1) + ' 格）');
     await shot('33_本局一招_用上一次');
     await tap('focus-chip', 400);
     ok(!!(await regionOf('focus-learn')), '点小条：讲这一招，能去学');
@@ -398,8 +405,8 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   {
     await ev(() => { window.__app.overlays.length = 0; window.__app.go('home'); });
     await page.waitForTimeout(300);
-    await more('duo');
-    ok(!!(await regionOf('duo-send')), '更多 → 约好友一起做：选难度、选几分钟后开始');
+    await tap('home-duo', 400);
+    ok(!!(await regionOf('duo-send')), '主页「对战」→ 约好友对战：选难度、选几分钟后开始');
     await tap('duo-tier-1', 100); await tap('duo-delay-3', 100);
     await tap('duo-send', 600);
     const inv = await ev(() => window.__app.lastShare);
@@ -431,6 +438,33 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     const rc = await ev(() => window.__store.recent(7));
     ok(rc.games > 0 && rc.tier >= 0, '进度表：最近 7 天 ' + rc.games + ' 局、赢 ' + rc.won + ' 局、最常玩「' + ['入门', '简单', '中等', '困难', '专家', '大师'][rc.tier] + '」');
     await shot('35_进度表');
+  }
+
+  // ---------- 9d. 思维链闪光 + 小樱认招 + 开局演示 + 主页入口 ----------
+  {
+    await ev(() => { const s = window.__store.data; s.current = null; s.seen.demo = {}; window.__app.overlays.length = 0; window.__app.startGame(0, { skipGate: true }); });
+    let dm = null;
+    for (let i = 0; i < 30 && !dm; i++) { await page.waitForTimeout(250); dm = await ev(() => window.__app.testHooks.demo()); }
+    ok(!!dm, '入门开局：小樱先在盘上演示一遍「排除法」，手指指着那一格（' + (dm ? '第 ' + (dm.k + 1) + ' 格填 ' + dm.v : '没出来') + '）');
+    await shot('36_开局演示_轮到你');
+    if (dm) {
+      await click(await ev((k) => window.__app.testHooks.cellCenter(k), dm.k), 80);
+      await click(await ev((v) => window.__app.testHooks.padCenter(v), dm.v), 120);
+      const after = await ev(() => ({ demo: window.__app.testHooks.demo(), chain: !!window.__app.testHooks.chain(), techs: window.__app.testHooks.board().techs }));
+      ok(!after.demo && after.chain && after.techs && after.techs['排除法'] === 1, '照着填对：一道光顺着思维链划过去，小樱认出「排除法」记 1 次');
+      await page.waitForTimeout(250);
+      await shot('37_思维链闪光');
+    }
+    // 越档认招：中等一招题里，那一招在入门玩家的盘面上也认得出是「区块排除」（中等的招）
+    const S = require(path.join(__dirname, '..', 'js', 'sudoku.js')), FB = require(path.join(__dirname, '..', 'js', 'focus_bank.js'));
+    const pz = S.decode(FB[2][0]), keys = S.focusCells(pz, ['pointing', 'claiming']), st = S.makeState(pz);
+    let ex = null;
+    for (let g = 0; g < 400 && !ex; g++) { const s2 = S.nextStep(st, 5); if (!s2) break; if (s2.place && s2.place.k === keys[0]) ex = S.explain(st.g, s2.place.k, s2.place.v); S.applyStep(st, s2); }
+    ok(!!ex && ex.show === '区块排除' && ex.level === 2 && ex.chain.length >= 1, '认招：这一格要先用区块排除才定得下（比入门难两档，小樱会说「哇」）');
+    await ev(() => { window.__app.overlays.length = 0; window.__app.go('home'); });
+    await page.waitForTimeout(400);
+    ok(!!(await regionOf('home-duo')) && !!(await regionOf('home-rank')), '主页有「对战」「好友榜」');
+    ok(!!(await ev(() => window.__layout.used['home.ver'])), '主页写着版本号');
   }
 
   // ---------- 9b. 界面编辑模式：编辑器代码不进微信包；layout.json 改了游戏照着走 ----------

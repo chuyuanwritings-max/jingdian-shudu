@@ -23,10 +23,10 @@ function create(opts) {
   };
 }
 
-// 填对了一个关键格：记一次「用上了这一招」。返回 true = 这一次算数
-function focusHit(b, k) {
+// 自己填对一格、而且认出来用的正是本局那一招：记一次「用上了」。返回 true = 这一次算数
+function focusUse(b, k, show) {
   const f = b.focus;
-  if (!f || f.keys.indexOf(k) < 0 || f.got.indexOf(k) >= 0) return false;
+  if (!f || show !== f.name || f.got.indexOf(k) >= 0) return false;
   f.got.push(k);
   return true;
 }
@@ -137,4 +137,4 @@ function revive(b) {
   b.revives++;
 }
 
-module.exports = { focusHit, create, input, erase, undo, findHint, fillHint, revive, counts, rightGrid, isRight, isWrong, locked, solAt };
+module.exports = { focusUse, create, input, erase, undo, findHint, fillHint, revive, counts, rightGrid, isRight, isWrong, locked, solAt };

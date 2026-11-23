@@ -71,9 +71,14 @@ module.exports = function (app) {
           ? [['用时', app.fmt(b.elapsed)], ['错误', String(b.mistakes)], ['本月完成', Object.keys(store.data.daily).filter((k) => k.slice(0, 7) === b.date.slice(0, 7)).length + ' 天']]
           : [['用时', app.fmt(b.elapsed) + (b.newBest ? '  新纪录' : '')], ['本档最好', app.fmt(st.best)], ['错误', String(b.mistakes)], ['连胜', st.streak + ' 局']];
         // 本局一招：第一行写用上了几处，后面是累计
+        // 这局用了哪些招（小樱认出来的），最多的排前面
+        if (b.techs) {
+          const list = Object.keys(b.techs).sort((x, y2) => b.techs[y2] - b.techs[x]).slice(0, 3);
+          if (list.length) rows.unshift(['这局用的招', list.map((n) => n + ' ' + b.techs[n]).join(' · ')]);
+        }
         if (b.focus) {
           const f = b.focus, tot = (store.data.techUses || {})[f.lesson] || f.got.length;
-          rows.unshift(['本局一招', f.name + ' ' + (f.keys.length > 9 ? f.got.length + ' 次' : f.got.length + '/' + f.keys.length) + ' · 累计 ' + tot + ' 次']);
+          rows.unshift(['本局一招', f.name + ' ' + (f.keys.length > 9 ? f.got.length + ' 次' : Math.min(f.got.length, f.keys.length) + '/' + f.keys.length) + ' · 累计 ' + tot + ' 次']);
         }
         const rowH = (rc.h - 10) / Math.max(4, rows.length);
         ui.card(ctx, rc.x, rc.y, rc.w, rows.length * rowH + 10, 16, th);

@@ -12,10 +12,14 @@ const DEFS = {
   'home.main': { name: '大按钮', screen: 'home', x: 52, y: 568, w: 270, h: 62, ax: 'c', ay: 'b' },
   'home.link': { name: '小字（换难度）', screen: 'home', x: 117, y: 634, w: 140, h: 44, ax: 'c', ay: 'b' },
   'home.daily': { name: '今日', screen: 'home', x: 18, y: 700, w: 64, h: 70, ax: 'l', ay: 'b' },
+  'home.duo': { name: '对战（约好友一起做）', screen: 'home', x: 109, y: 700, w: 64, h: 70, ax: 'c', ay: 'b' },
+  'home.rank': { name: '好友榜', screen: 'home', x: 202, y: 700, w: 64, h: 70, ax: 'c', ay: 'b' },
+  'home.ver': { name: '版本号', screen: 'home', x: 137, y: 770, w: 100, h: 14, ax: 'c', ay: 'b' },
   'home.more': { name: '更多', screen: 'home', x: 293, y: 700, w: 64, h: 70, ax: 'r', ay: 'b' },
   // 棋盘（局内）
   'play.info': { name: '错误 / 分数 / 时间', screen: 'play', x: 0, y: 92, w: 375, h: 30, ax: 's', ay: 't' },
   'play.focus': { name: '本局一招', screen: 'play', x: 92, y: 130, w: 190, h: 30, ax: 'c', ay: 't' },
+  'play.sakura': { name: '小樱', screen: 'play', x: 311, y: 122, w: 54, h: 54, ax: 'r', ay: 't' },
   'play.board': { name: '棋盘', screen: 'play', x: 12, y: 176, w: 351, h: 351, ax: 'c', ay: 'm' },
   'play.hint': { name: '提示卡（出提示时才有）', screen: 'play', x: 12, y: 537, w: 351, h: 64, ax: 's', ay: 'm' },
   'play.tools': { name: '工具（撤销 / 橡皮 / 笔记 / 提示）', screen: 'play', x: 8, y: 622, w: 359, h: 62, ax: 's', ay: 'b' },
@@ -24,11 +28,11 @@ const DEFS = {
   'result.icon': { name: '顶上的勾 / 金方块', screen: 'result', x: 153, y: 80, w: 68, h: 68, ax: 'c', ay: 't' },
   'result.head': { name: '完成！+ 难度', screen: 'result', x: 40, y: 154, w: 295, h: 70, ax: 'c', ay: 't' },
   'result.score': { name: '分数', screen: 'result', x: 87, y: 240, w: 200, h: 72, ax: 'c', ay: 't' },
-  'result.stats': { name: '数据卡（用时 / 最好 / 错误 / 连胜）', screen: 'result', x: 16, y: 324, w: 343, h: 170, ax: 's', ay: 't' },
-  'result.share': { name: '发给朋友挑战', screen: 'result', x: 16, y: 512, w: 343, h: 54, ax: 's', ay: 't' },
-  'result.again': { name: '再来一局', screen: 'result', x: 16, y: 576, w: 166, h: 50, ax: 'c', ay: 't' },
-  'result.home': { name: '回首页', screen: 'result', x: 193, y: 576, w: 166, h: 50, ax: 'c', ay: 't' },
-  'result.theme': { name: '看视频解锁主题', screen: 'result', x: 16, y: 640, w: 343, h: 50, ax: 's', ay: 't' },
+  'result.stats': { name: '数据卡（本局一招 / 用的招 / 用时 / 最好 / 错误 / 连胜）', screen: 'result', x: 16, y: 324, w: 343, h: 200, ax: 's', ay: 't' },
+  'result.share': { name: '发给朋友挑战', screen: 'result', x: 16, y: 540, w: 343, h: 54, ax: 's', ay: 't' },
+  'result.again': { name: '再来一局', screen: 'result', x: 16, y: 604, w: 166, h: 50, ax: 'c', ay: 't' },
+  'result.home': { name: '回首页', screen: 'result', x: 193, y: 604, w: 166, h: 50, ax: 'c', ay: 't' },
+  'result.theme': { name: '看视频解锁主题', screen: 'result', x: 16, y: 666, w: 343, h: 50, ax: 's', ay: 't' },
 };
 
 let data = {};

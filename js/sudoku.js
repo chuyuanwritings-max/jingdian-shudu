@@ -296,6 +296,47 @@ function grade(grid, maxLevel) {
   return { solved: false, level, steps, hardSteps };
 }
 
+// ---------- 玩家这一步用的是哪一招（思维链）----------
+// 招的叫法统一给玩家看（显性 / 隐性数对都叫「数对」）
+const TECH_SHOW = { fullHouse: '最后一格', hiddenBox: '排除法', hiddenLine: '排除法', nakedSingle: '唯一候选', pointing: '区块排除', claiming: '区块排除',
+  nakedPair: '数对', hiddenPair: '数对', nakedTriple: '三数组', hiddenTriple: '三数组', xWing: 'X-Wing', xyWing: 'XY-Wing', swordfish: '剑鱼' };
+// 这一格 k 现在是不是一眼就能定下 v：最后一格 → 宫内排除 → 行列排除 → 唯一候选（从简单到难）
+function singleAt(st, k, v) {
+  if (st.g[k] || !(st.c[k] & bit(v))) return null;
+  for (const u of UNITS_OF[k]) { let n = 0; for (const x of UNITS[u]) if (!st.g[x]) n++; if (n === 1) return { tech: 'fullHouse', unit: u, place: { k, v } }; }
+  const b = UNITS_OF[k][2];
+  if (spots(st, b, v).length === 1) return { tech: 'hiddenBox', unit: b, digit: v, place: { k, v } };
+  for (const u of UNITS_OF[k].slice(0, 2)) if (spots(st, u, v).length === 1) return { tech: 'hiddenLine', unit: u, digit: v, place: { k, v } };
+  if (popcount(st.c[k]) === 1) return { tech: 'nakedSingle', place: { k, v } };
+  return null;
+}
+// 玩家刚把 v 填进 k（grid 里 k 还是空的）：在这个盘面上，最简单是怎么想出来的。
+// 先看这一格能不能一眼定；不能就用「删候选」的招一步步推（不先填别的格），直到它能定。
+// 返回 { show 招名, tech, level, chain 删候选的步骤（只留和这一格有关的）, final 最后一眼定的那一步 }；推不出来（猜的）返回 null
+function explain(grid, k, v) {
+  const st = makeState(grid), chain = [];
+  for (let guard = 0; guard < 60; guard++) {
+    const fin = singleAt(st, k, v);
+    if (fin) {
+      fin.level = TECH[fin.tech].level;
+      // 只留和这一格有关的删除：删的是这一单元里的 v，或者删的是这一格自己
+      const cellsU = fin.unit !== undefined ? UNITS[fin.unit] : [];
+      const rel = chain.filter((s) => s.elim.some((e) => e.k === k || (cellsU.indexOf(e.k) >= 0 && e.m & bit(v))));
+      const used = rel.length ? rel : chain.slice(-1);
+      let top = fin;
+      used.forEach((s) => { if (s.level > top.level) top = s; });
+      return { show: TECH_SHOW[top.tech], tech: top.tech, level: top.level, chain: used, final: fin };
+    }
+    let s = null;
+    for (let i = 4; i < ORDER.length && !s; i++) s = ORDER[i](st); // 第 4 个起是删候选的招（区块排除……）
+    if (!s) return null;
+    s.level = TECH[s.tech].level;
+    chain.push(s);
+    applyStep(st, s);
+  }
+  return null;
+}
+
 // 「本局一招」的关键格：一直用最简单能用的招解到底，记下哪些格子是「非用这一招不可」才填得出来的。
 // 填数的招（排除法、唯一候选）：解题器用它填的格子就是关键格（更简单的招都用不上时才轮到它）。
 // 删候选的招（区块排除、数对）：用完它以后填出的第一格算一个关键格（就是这一招解开的那一格）。
@@ -441,7 +482,7 @@ function hintText(step, place) {
 }
 
 module.exports = {
-  focusCells,
+  focusCells, explain, singleAt, TECH_SHOW,
   ROW, COL, BOX, UNITS, UNITS_OF, PEERS, ALL, bit, popcount, digits, TIERS, TECH,
   makeState, place, applyStep, nextStep, grade, countSolutions, solve, rng, shuffle,
   randomSolution, makePuzzle, encode, decode, hintFor, candMask, MIN_GIVENS,

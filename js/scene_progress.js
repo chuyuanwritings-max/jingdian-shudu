@@ -46,6 +46,13 @@ module.exports = function (app) {
         ui.text(ctx, l, cx, y + 96, 12, th.sub, 'center');
       });
       y += 132;
+      // ---- 我最常用的招（小樱每一步认出来的，做完一局记一次）----
+      const tt = store.data.techTotal || {};
+      const top = Object.keys(tt).sort((a, c) => tt[c] - tt[a]).slice(0, 4);
+      ui.card(ctx, 16, y, W - 32, 58, 16, th);
+      ui.text(ctx, '我最常用的招', 32, y + 18, 13, th.sub, 'left', 600);
+      ui.text(ctx, top.length ? top.map((n) => n + ' ' + tt[n]).join(' · ') : '做完一局，小樱就帮你记下来', 32, y + 40, 14, top.length ? th.text : th.faint, 'left', 600);
+      y += 70;
       // ---- 每一档（普通局）：玩了几局、赢了几局 ----
       const tiers = S.TIERS.map((tr, i) => ({ name: tr.name, s: store.data.stats[i] })).filter((x) => x.s.played > 0);
       const rowH = 30, th2 = 30 + Math.max(1, tiers.length) * rowH + 8;

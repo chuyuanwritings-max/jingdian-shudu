@@ -41,11 +41,9 @@ module.exports = function (app) {
       const learned = T.LESSONS.filter((L) => store.data.lessons[L.id]).length;
       const rows = [
         ['lessons', '教学', '已学 ' + learned + ' / ' + T.LESSONS.length, () => app.go('lessons')],
-        ['duo', '约好友一起做', '同一题、同时开始', () => app.duoSheet()],
         ['progress', '进度表', '最近玩什么、胜率', () => app.go('progress')],
         ['look', '主题', th.name, () => app.go('look', { back: { name: 'home' } })],
         ['stats', '战绩', '', () => app.go('stats')],
-        ['rank', '好友榜', '', () => app.go('rank')],
         ['brain', '数独练脑', '', () => app.go('brain')],
         ['settings', '设置', '', () => app.settingsSheet({ name: 'home' })],
       ];
@@ -77,6 +75,27 @@ module.exports = function (app) {
     else { ctx.beginPath(); ctx.arc(cx + 15, cy - 13, 4.5, 0, Math.PI * 2); ctx.fillStyle = H0.amber; ctx.fill(); }
     ctx.restore();
     ui.text(ctx, '今日', cx, cy + 30, 11, H0.sub, 'center');
+  }
+  // 对战：两个小人头对着，中间一道闪电似的斜线
+  function drawDuo(ctx, cx, cy, on) {
+    ctx.save();
+    if (on) { ctx.translate(cx, cy); ctx.scale(0.92, 0.92); ctx.translate(-cx, -cy); }
+    ui.stroke(ctx, H0.title, 2);
+    for (const dx of [-8, 8]) {
+      ctx.beginPath(); ctx.arc(cx + dx, cy - 6, 5.5, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx + dx, cy + 12, 9, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    }
+    ctx.strokeStyle = H0.amber; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(cx + 2, cy - 14); ctx.lineTo(cx - 2, cy - 2); ctx.lineTo(cx + 2, cy - 2); ctx.lineTo(cx - 2, cy + 10); ctx.stroke();
+    ctx.restore();
+    ui.text(ctx, '对战', cx, cy + 30, 11, H0.sub, 'center');
+  }
+  function drawRank(ctx, cx, cy, on) {
+    ctx.save();
+    if (on) { ctx.translate(cx, cy); ctx.scale(0.92, 0.92); ctx.translate(-cx, -cy); }
+    ui.icons.trophy(ctx, cx, cy, 30, H0.title, 1);
+    ctx.restore();
+    ui.text(ctx, '好友榜', cx, cy + 30, 11, H0.sub, 'center');
   }
   function drawMore(ctx, cx, cy, on) {
     ctx.save();
@@ -143,6 +162,15 @@ module.exports = function (app) {
       drawToday(ctx, rd.x + rd.w / 2, rd.y + 26, tOn);
       const mOn = ui.button({ id: 'home-more', x: ro.x, y: ro.y, w: ro.w, h: ro.h, onTap: () => app.moreSheet() });
       drawMore(ctx, ro.x + ro.w / 2, ro.y + 26, mOn);
+      // 对战、好友榜（Cc：「好友榜也应该放在主页上……对战模式……都应该放在主页上」）
+      const rv = LY.rect('home.duo'), rr2 = LY.rect('home.rank');
+      const vOn = ui.button({ id: 'home-duo', x: rv.x, y: rv.y, w: rv.w, h: rv.h, onTap: () => app.duoSheet() });
+      drawDuo(ctx, rv.x + rv.w / 2, rv.y + 26, vOn);
+      const kOn = ui.button({ id: 'home-rank', x: rr2.x, y: rr2.y, w: rr2.w, h: rr2.h, onTap: () => app.go('rank') });
+      drawRank(ctx, rr2.x + rr2.w / 2, rr2.y + 26, kOn);
+      // 版本号（Cc：「主页上记得写版本号」）
+      const rver = LY.rect('home.ver');
+      ui.text(ctx, 'v' + C.VERSION, rver.x + rver.w / 2, rver.y + rver.h / 2, 10, H0.sub, 'center');
     },
   };
 };
