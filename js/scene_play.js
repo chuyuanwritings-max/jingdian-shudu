@@ -526,7 +526,7 @@ module.exports = function (app) {
       const th = app.th;
       layout(); // 每帧按布局表算一次（便宜；编辑器拖动时立刻跟上）
       const tierName = S.TIERS[b.tier].name;
-      const title = b.mode === 'daily' ? '每日挑战 · ' + tierName : b.mode === 'challenge' ? '好友挑战 · ' + tierName : tierName;
+      const title = b.mode === 'daily' ? '每日挑战 · ' + tierName : b.mode === 'challenge' ? '好友挑战 · ' + tierName : b.mode === 'duo' ? '一起做 · ' + tierName : tierName;
       app.header(ctx, title, () => { persist(); app.go(b.mode === 'daily' ? 'daily' : 'home'); }, (ctx2, y, h) => {
         const x = app.headerRight - 48;
         const on = ui.button({ id: 'pause', x, y, w: 44, h, onTap: () => { paused = !paused; persist(); } });

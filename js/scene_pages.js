@@ -40,7 +40,7 @@ module.exports = function (app) {
       const hk = LY.k('result.head', rh), sk = LY.k('result.score', rs), ck = LY.k('result.stats', rc);
       const hx = rh.x + rh.w / 2, hy = rh.y + rh.h * 0.29;
       const tierName = S.TIERS[b.tier].name;
-      if (b.mode === 'challenge') {
+      if (b.challenge) {
         // ---- 好友挑战：两人对比（两张卡放在数据卡的位置）----
         const r = app.challengeResult(b);
         ui.text(ctx, r.win ? '你赢了！' : '差一点', hx, hy, Math.round(28 * hk), r.win ? th.ok : th.text, 'center', 700);
@@ -60,7 +60,7 @@ module.exports = function (app) {
         ui.pill(ctx, th, 'res-home', rHome.x, rHome.y, rHome.w, rHome.h, '回首页', () => app.go('home'), 'card');
       } else {
         ui.text(ctx, '完成！', hx, hy, Math.round(28 * hk), th.text, 'center', 700);
-        ui.text(ctx, (b.mode === 'daily' ? '每日挑战 · ' + b.date.slice(5).replace('-', '月') + '日 · ' : '') + tierName, hx, rh.y + rh.h * 0.77, Math.round(14 * hk), th.sub, 'center');
+        ui.text(ctx, (b.mode === 'daily' ? '每日挑战 · ' + b.date.slice(5).replace('-', '月') + '日 · ' : b.mode === 'duo' ? '约好一起做 · ' : '') + tierName, hx, rh.y + rh.h * 0.77, Math.round(14 * hk), th.sub, 'center');
         // 分数滚上去
         const shown = res.fromCut ? b.score : Math.round(b.score * ui.ease.out(p));
         ui.text(ctx, String(shown), rs.x + rs.w / 2, rs.y + rs.h * 0.33, Math.round(44 * sk), th.primary, 'center', 700);
@@ -84,8 +84,10 @@ module.exports = function (app) {
         });
         // 按钮：发给朋友挑战这一题（主按钮）；再来一局 / 回首页并排
         if (!app.scenes.result.ready()) { app.animate(400); return; } // 按钮晚 20 帧
-        ui.pill(ctx, th, 'res-share', rShare.x, rShare.y, rShare.w, rShare.h, '发给朋友挑战这一题', () => app.shareChallenge(b), 'primary');
+        if (b.mode === 'duo') ui.pill(ctx, th, 'res-share', rShare.x, rShare.y, rShare.w, rShare.h, '把成绩发给他（他做完才看得到）', () => app.shareChallenge(b, false, 'duo'), 'primary');
+        else ui.pill(ctx, th, 'res-share', rShare.x, rShare.y, rShare.w, rShare.h, '发给朋友挑战这一题', () => app.shareChallenge(b), 'primary');
         if (b.mode === 'daily') ui.pill(ctx, th, 'res-cal', rAgain.x, rAgain.y, rAgain.w, rAgain.h, '回日历', () => app.go('daily'), 'card');
+        else if (b.mode === 'duo') ui.pill(ctx, th, 'res-again', rAgain.x, rAgain.y, rAgain.w, rAgain.h, '再约一局', () => app.duoSheet(), 'card');
         else ui.pill(ctx, th, 'res-again', rAgain.x, rAgain.y, rAgain.w, rAgain.h, '再来一局', () => app.startGame(b.tier), 'card');
         ui.pill(ctx, th, 'res-home', rHome.x, rHome.y, rHome.w, rHome.h, '回首页', () => app.go('home'), 'card');
       }

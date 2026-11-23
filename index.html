@@ -191,7 +191,7 @@ module.exports = { focusHit, create, input, erase, undo, findHint, fillHint, rev
 __def("js/config.js", function (module, exports, require) {
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.8';
+const VERSION = '0.9';
 
 // 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
 // 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
@@ -1883,17 +1883,21 @@ require('./overlays.js')(app);
 require('./scene_look.js')(app);
 require('./scene_welcome.js')(app);
 require('./scene_challenge.js')(app);
+require('./scene_duo.js')(app);
+require('./scene_progress.js')(app);
 require('./cuts.js')(app);
 
 // 朋友点挑战卡进来：直接到那一题的挑战页
-if (!app.openChallenge(P.launchQuery())) {
+// 朋友点「约你一起做」的邀请卡进来：直接到等候室
+const launchQ = P.launchQuery();
+if (!app.openDuo(launchQ) && !app.openChallenge(launchQ)) {
   if (!store.data.seen.tutorial) {
     app.go('welcome');
     // 第一次打开：开场过场（黑 → 那一块亮起来 → 主页图和游戏名亮相），播完露出「你玩过数独吗？」
     if (!store.data.seen.open) app.cutOpen();
   } else app.go('home');
 }
-P.onShow((q) => { if (q && q.c) app.openChallenge(q); });
+P.onShow((q) => { if (q && q.d) app.openDuo(q); else if (q && q.c) app.openChallenge(q); });
 frame();
 
 // 给机器人测试用（只在浏览器里挂）
@@ -2381,6 +2385,11 @@ function uploadScore(key, score, extra) {
   const value = JSON.stringify({ wxgame: { score, update_time: Math.floor(Date.now() / 1000) }, extra: extra || {} });
   wx.setUserCloudStorage({ KVDataList: [{ key, value }], fail() {} });
 }
+// 存一条给好友看的数据（不是分数榜格式，开放数据域自己解析）
+function uploadKV(key, value) {
+  if (!isWx || !wx.setUserCloudStorage) return;
+  wx.setUserCloudStorage({ KVDataList: [{ key, value: String(value).slice(0, 1000) }], fail() {} });
+}
 function openDataCanvas() {
   return hasOpenData ? wx.getOpenDataContext().canvas : null;
 }
@@ -2514,7 +2523,7 @@ module.exports = {
   isWx, setup, makeCanvas, now, nextFrame, onHide, vibrate, setVibrate, showRewardedAd,
   hasOpenData, uploadScore, openDataCanvas, postOpenData, enableShare,
   load, save, exposeForTest, sound, unlockAudio, setMuted,
-  loadImage, launchQuery, onShow, canvasImage, shareLink, shareToWx, systemShare, copyText,
+  uploadKV, loadImage, launchQuery, onShow, canvasImage, shareLink, shareToWx, systemShare, copyText,
 };
 
 });
@@ -2558,7 +2567,7 @@ function decode(q) {
 
 module.exports = function (app) {
   // 挑战卡上的图：5:4（微信分享卡片的比例），盘面只画题目原有的数
-  app.makeShareImage = (b, line1, line2) => {
+  app.makeShareImage = (b, line1, line2, btn) => {
     const th = app.th, w = 500, h = 400, d = 2;
     const c = P.makeCanvas(w * d, h * d);
     const g = c.getContext('2d');
@@ -2573,28 +2582,22 @@ module.exports = function (app) {
     ui.text(g, line1[1], tx, 160, 24, th.text, 'left', 700);
     ui.wrap(g, line2, tx, 200, tw, 15, 21, th.sub, 500);
     ui.fillRR(g, tx, 290, tw, 46, 23, th.primary);
-    ui.text(g, '来挑战', tx + tw / 2, 313, 18, th.primaryText, 'center', 700);
+    ui.text(g, btn || '来挑战', tx + tw / 2, 313, 18, th.primaryText, 'center', 700);
     return c;
   };
 
-  // 发挑战：mine = 我这一局（board）
-  app.shareChallenge = (b, isReply) => {
-    const tn = S.TIERS[b.tier].name;
-    // 用时先不说（Cc：「她做完成功之后，才看得到我的时间」）：做完这一题才揭晓
-    const title = isReply ? '我也解开了这题，该你了（做完才看得到我的用时）' : '我解开了这题「' + tn + '」数独，你来试试？做完才看得到我的用时';
-    const img = app.makeShareImage(b, ['我解开了', '这一题'], '「' + tn + '」数独\n做完才揭晓我的用时');
-    const q = encode(b);
-    if (P.shareToWx(title, q, P.canvasImage(img))) return;
-    // 浏览器预览：弹一个分享窗，给 Cc 看朋友会收到什么，能复制链接或用手机自带的分享
+  // 发一张微信卡片：微信里直接调分享；浏览器预览弹一个分享窗，给 Cc 看朋友会收到什么，能复制链接或用手机自带的分享
+  app.shareCard = (title, q, img, sheetTitle) => {
+    if (P.shareToWx(title, q, P.canvasImage(img))) return null;
     const url = P.shareLink(q);
     const dataUrl = P.canvasImage(img);
-    app.lastShare = { url, title };
+    app.lastShare = { url, title, q };
     app.push({
       onBackdrop: () => app.pop(),
       draw(ctx, t, p) {
         const th = app.th;
         const hh = 470 + (app.H - app.bottom);
-        const y = app.sheet(ctx, p, hh, '发给朋友挑战');
+        const y = app.sheet(ctx, p, hh, sheetTitle || '发给朋友挑战');
         ui.text(ctx, '朋友会收到这样一张卡片：', 24, y + 66, 13, th.sub);
         // 卡片预览（直接画同一张图）
         const cw = app.W - 48, ch = cw * 0.8;
@@ -2612,13 +2615,33 @@ module.exports = function (app) {
     return dataUrl;
   };
 
+  // 发挑战 / 发成绩：b = 我这一局。kind = 'duo'：约好一起做的那题，做完互发成绩
+  app.shareChallenge = (b, isReply, kind) => {
+    const tn = S.TIERS[b.tier].name;
+    // 用时先不说（Cc：「她做完成功之后，才看得到我的时间」）：做完这一题才揭晓
+    const title = kind === 'duo' ? '约好一起做的那题，我做完了！你做完就能看到我的用时'
+      : isReply ? '我也解开了这题，该你了（做完才看得到我的用时）' : '我解开了这题「' + tn + '」数独，你来试试？做完才看得到我的用时';
+    const img = app.makeShareImage(b, kind === 'duo' ? ['我做完了', '约好的那一题'] : ['我解开了', '这一题'], '「' + tn + '」数独\n做完才揭晓我的用时');
+    return app.shareCard(title, encode(b), img, kind === 'duo' ? '把成绩发给他' : '发给朋友挑战');
+  };
+
   // ---------- 朋友点开 ----------
   let ch = null;
   app.openChallenge = (q) => {
     const c = decode(q);
     if (!c) return false;
     ch = c;
-    app.go('challenge');
+    const mine = (store.data.finished || {})[c.puzzle], cur = store.data.current;
+    if (mine) {
+      // 这一题我已经做完了（比如约好一起做、或者朋友把成绩发回来）：直接两人并排比，不用再做一遍
+      app.go('result', { board: { mode: 'challenge', tier: c.tier, idx: c.idx, puzzle: c.puzzle, elapsed: mine.time, mistakes: mine.mistakes, score: mine.score || 0, revives: 0, challenge: { time: c.time, mistakes: c.mistakes }, compareOnly: true } });
+    } else if (cur && !cur.done && cur.puzzle === c.puzzle) {
+      // 这一题我正在做：把朋友的成绩挂上，做完就揭晓
+      cur.challenge = { time: c.time, mistakes: c.mistakes };
+      store.save();
+      app.continueGame();
+      setTimeout(() => app.toast('朋友做完了！\n你做完这一题就能看到他的用时', 2600), 300);
+    } else app.go('challenge');
     return true;
   };
   app.startChallenge = (guided) => {
@@ -2671,6 +2694,163 @@ module.exports = function (app) {
 };
 
 });
+__def("js/scene_duo.js", function (module, exports, require) {
+// 约好友一起做（0.9，Cc：「我跟我女朋友，我们俩可以同时开始做」）
+// 不用服务器：邀请卡里写好「几点几分开始」，两部手机各自按自己的时钟倒计时（手机时间都对过网，差不到一秒），到点同时揭开同一道题。
+// 题目到点才揭开（邀请卡上的图也是空盘），谁都偷看不了。各算各的用时；做完「把成绩发给他」，他做完才看得到（复用挑战卡）。
+const P = require('./platform.js');
+const ui = require('./ui.js');
+const S = require('./sudoku.js');
+const Board = require('./board.js');
+const store = require('./store.js');
+const bank = require('./puzzles.js');
+const focusBank = require('./focus_bank.js');
+const DB = require('./drawboard.js');
+
+const DELAYS = [1, 3, 5]; // 几分钟后开始
+const EMPTY = '0'.repeat(81);
+
+// 邀请链接：d = 档.题号.开始时间（秒），p = 题目
+function encodeDuo(duo) { return { d: [duo.tier, duo.idx, duo.at].join('.'), p: duo.puzzle }; }
+function decodeDuo(q) {
+  if (!q || !q.d) return null;
+  const [tier, idx, at] = String(q.d).split('.').map(Number);
+  if (!(tier >= 0 && tier < 6) || !(at > 1.7e9)) return null;
+  const puzzle = q.p && /^[0-9]{81}$/.test(q.p) ? q.p : null;
+  if (!puzzle || S.countSolutions(S.decode(puzzle), 2) !== 1) return null;
+  return { tier, idx: idx || 0, at, puzzle };
+}
+const hhmm = (sec) => { const d = new Date(sec * 1000); return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); };
+const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+
+module.exports = function (app) {
+  // ---------- 发邀请：选难度、选几分钟后开始 ----------
+  let pick = null; // { tier, delay }
+  app.duoSheet = () => {
+    pick = { tier: store.data.lastTier != null ? store.data.lastTier : Math.max(0, app.recTier ? app.recTier() : 1), delay: 1 };
+    app.push({
+      onBackdrop: () => app.pop(),
+      draw(ctx, t, p) {
+        const th = app.th, W = app.W;
+        const h = 330 + (app.H - app.bottom);
+        const y = app.sheet(ctx, p, h, '约好友一起做');
+        ui.text(ctx, '同一道题，到点两边同时开始，各算各的用时', W / 2, y + 62, 13, th.sub, 'center');
+        ui.text(ctx, '难度', 20, y + 92, 13, th.sub, 'left', 600);
+        const gap = 6, cw = (W - 32 - gap * 5) / 6;
+        S.TIERS.forEach((tr, i) => {
+          const x = 16 + i * (cw + gap), cy = y + 106;
+          ui.button({ id: 'duo-tier-' + i, x, y: cy, w: cw, h: 36, onTap: () => { pick.tier = i; } });
+          ui.fillRR(ctx, x, cy, cw, 36, 18, i === pick.tier ? th.primary : th.soft);
+          ui.text(ctx, tr.name, x + cw / 2, cy + 18, 13, i === pick.tier ? th.primaryText : th.primary, 'center', 600);
+        });
+        ui.text(ctx, '什么时候开始', 20, y + 164, 13, th.sub, 'left', 600);
+        const dw = (W - 32 - gap * 2) / 3;
+        DELAYS.forEach((m, i) => {
+          const x = 16 + i * (dw + gap), cy = y + 178;
+          ui.button({ id: 'duo-delay-' + m, x, y: cy, w: dw, h: 40, onTap: () => { pick.delay = m; } });
+          ui.fillRR(ctx, x, cy, dw, 40, 20, m === pick.delay ? th.primary : th.soft);
+          ui.text(ctx, m + ' 分钟后', x + dw / 2, cy + 20, 14, m === pick.delay ? th.primaryText : th.primary, 'center', 600);
+        });
+        ui.pill(ctx, th, 'duo-send', 16, y + 240, W - 32, 54, '发邀请（' + hhmm(Math.ceil(Date.now() / 1000) + pick.delay * 60) + ' 开始）', () => { app.pop(); createDuo(pick.tier, pick.delay); }, 'primary');
+      },
+    });
+  };
+  function createDuo(tier, delay) {
+    // 简单 / 中等 / 困难从一招题库里随便挑一题；其他档从主题库前半段挑
+    const fb = focusBank[tier];
+    let idx, puzzle;
+    if (fb && fb.length) { const i = Math.floor(Math.random() * fb.length); idx = 1000 + i; puzzle = fb[i]; }
+    else { const half = Math.floor(bank[tier].length / 2); idx = Math.floor(Math.random() * half); puzzle = bank[tier][idx]; }
+    const duo = { tier, idx, puzzle, at: Math.ceil(Date.now() / 1000) + delay * 60, host: true };
+    store.data.duo = duo;
+    store.save();
+    app.go('duo');
+    invite(duo);
+  }
+  function invite(duo) {
+    const tn = S.TIERS[duo.tier].name;
+    const title = '约你 ' + hhmm(duo.at) + ' 一起做一道「' + tn + '」数独，同一道题同时开始';
+    const img = app.makeShareImage({ puzzle: EMPTY, tier: duo.tier }, ['约你一起做', hhmm(duo.at) + ' 开始'], '「' + tn + '」数独\n同一道题，到点才揭开', '来一起做');
+    app.shareCard(title, encodeDuo(duo), img, '发邀请');
+  }
+
+  // ---------- 朋友点开邀请 ----------
+  app.openDuo = (q) => {
+    const d = decodeDuo(q);
+    if (!d) return false;
+    const cur = store.data.duo;
+    if (!(cur && cur.puzzle === d.puzzle)) { store.data.duo = Object.assign(d, { host: false }); store.save(); }
+    app.go('duo');
+    return true;
+  };
+
+  function startDuo() {
+    const duo = store.data.duo;
+    if (!duo) return;
+    store.data.seen.tutorial = true;
+    if (!store.data.level) store.data.level = 'some';
+    store.startGame(duo.tier, 'duo');
+    const nb = Board.create({ mode: 'duo', tier: duo.tier, idx: duo.idx, puzzle: duo.puzzle });
+    nb.duo = { at: duo.at };
+    store.data.current = nb;
+    store.data.duo = null;
+    store.save();
+    app.sound('lamp');
+    app.buzz('heavy');
+    app.go('play', { board: nb });
+  }
+
+  // ---------- 等候室：倒计时，到点揭开 ----------
+  let lastTick = -1, lateAtEnter = false;
+  app.scenes.duo = {
+    enter() {
+      const duo = store.data.duo;
+      lastTick = -1;
+      lateAtEnter = !!duo && Date.now() > duo.at * 1000 + 3000; // 进来时已经过点 3 秒以上：不自动开，让他自己点
+    },
+    live: () => true,
+    draw(ctx, t) {
+      const th = app.th, W = app.W, duo = store.data.duo;
+      app.header(ctx, '约好一起做', () => app.go(store.data.seen.tutorial ? 'home' : 'welcome'));
+      if (!duo) { ui.text(ctx, '这一局已经开始或者取消了', W / 2, app.H / 2, 15, th.sub, 'center'); return; }
+      const left = duo.at * 1000 - Date.now(), tn = S.TIERS[duo.tier].name;
+      let y = app.headerY + app.headerH + 18;
+      ui.text(ctx, duo.host ? '邀请发出去了，到点一起开始' : '朋友约你一起做', W / 2, y, 15, th.sub, 'center');
+      ui.text(ctx, '「' + tn + '」数独 · 同一道题', W / 2, y + 34, 22, th.text, 'center', 700);
+      y += 66;
+      // 倒计时（最后 3 秒每秒一声）
+      if (left > 0) {
+        ui.text(ctx, mmss(left), W / 2, y + 36, 56, th.primary, 'center', 800);
+        ui.text(ctx, hhmm(duo.at) + ' 开始', W / 2, y + 80, 13, th.sub, 'center');
+        const s = Math.ceil(left / 1000);
+        if (s <= 3 && s !== lastTick) { lastTick = s; app.sound('tick' + (4 - s)); }
+      } else if (!lateAtEnter) {
+        startDuo();
+        return;
+      } else {
+        ui.text(ctx, '已经开始 ' + mmss(-left) + ' 了', W / 2, y + 36, 30, th.text, 'center', 700);
+        ui.text(ctx, '现在开始也行，各算各的用时', W / 2, y + 76, 13, th.sub, 'center');
+      }
+      y += 104;
+      // 盖着的棋盘：到点才揭开题目
+      const avail = app.bottom - 16 - y - 130;
+      const size = Math.max(160, Math.min(W - 80, Math.floor(avail / 9) * 9)), bx = Math.round((W - size) / 2);
+      DB.draw(ctx, th, { x: bx, y, size }, { vals: new Array(81).fill(0), given: new Array(81).fill(false), notes: null, wrong: () => false, selected: -1, now: t }, app.dpr);
+      ui.fillRR(ctx, bx + size / 2 - 92, y + size / 2 - 24, 184, 48, 24, th.card);
+      ui.icons.lock(ctx, bx + size / 2 - 66, y + size / 2, 18, th.sub);
+      ui.text(ctx, '到点才揭开题目', bx + size / 2 + 10, y + size / 2, 15, th.text, 'center', 600);
+      y += size + 18;
+      if (left <= 0) ui.pill(ctx, th, 'duo-start', 16, y, W - 32, 54, '开始', () => startDuo(), 'primary');
+      else if (duo.host) ui.pill(ctx, th, 'duo-resend', 16, y, W - 32, 50, '再发一次邀请', () => invite(duo), 'card');
+      else if (!store.data.lessons.rules) ui.pill(ctx, th, 'duo-learn', 16, y, W - 32, 50, '没玩过？先花 30 秒学规则', () => app.go('lesson', { index: 0, then: 'duo', firstRun: true }), 'card');
+      ui.text(ctx, '做完把成绩发给对方：他做完才看得到你的用时', W / 2, y + 72, 12, th.sub, 'center');
+    },
+  };
+
+  app.duoHooks = { encodeDuo, decodeDuo, startDuo, current: () => store.data.duo };
+};
+
+});
 __def("js/scene_home.js", function (module, exports, require) {
 // 首页（0.7 精简，主页与过场设计_Fable_1.0.md 第三部分）：主页图 + 游戏名 + 一个会变的大按钮 + 一行小字 + 两个小图标。
 // 能点的从 8 个减到 4 个：大按钮（继续 / 接着学 / 新游戏）、小字（新游戏 › / 换难度 ›）、左下「今日」、右下「更多」。
@@ -2707,24 +2887,29 @@ module.exports = function (app) {
   }
 
   // 「更多」：半屏面板，六行
+  // 「更多」：半屏面板。每行一个固定的 id（more-lessons……），以后加行不打乱
   app.moreSheet = () => app.push({
     onBackdrop: () => app.pop(),
     draw(ctx, t, p) {
-      const th = app.th, rowH = 56;
+      const th = app.th;
       const learned = T.LESSONS.filter((L) => store.data.lessons[L.id]).length;
       const rows = [
-        ['教学', '已学 ' + learned + ' / ' + T.LESSONS.length, () => app.go('lessons')],
-        ['主题', th.name, () => app.go('look', { back: { name: 'home' } })],
-        ['战绩', '', () => app.go('stats')],
-        ['好友榜', '', () => app.go('rank')],
-        ['数独练脑', '', () => app.go('brain')],
-        ['设置', '', () => { app.pop(); app.settingsSheet({ name: 'home' }); }],
+        ['lessons', '教学', '已学 ' + learned + ' / ' + T.LESSONS.length, () => app.go('lessons')],
+        ['duo', '约好友一起做', '同一题、同时开始', () => app.duoSheet()],
+        ['progress', '进度表', '最近玩什么、胜率', () => app.go('progress')],
+        ['look', '主题', th.name, () => app.go('look', { back: { name: 'home' } })],
+        ['stats', '战绩', '', () => app.go('stats')],
+        ['rank', '好友榜', '', () => app.go('rank')],
+        ['brain', '数独练脑', '', () => app.go('brain')],
+        ['settings', '设置', '', () => app.settingsSheet({ name: 'home' })],
       ];
+      // 小屏（iPhone SE）行矮一点，整张面板不超过屏幕 85%
+      const rowH = Math.max(44, Math.min(56, Math.floor((app.H * 0.85 - 74 - (app.H - app.bottom)) / rows.length)));
       const h = 58 + rows.length * rowH + 16 + (app.H - app.bottom);
       const y = app.sheet(ctx, p, h, '');
-      rows.forEach(([name, sub, go], i) => {
+      rows.forEach(([id, name, sub, go], i) => {
         const ry = y + 26 + i * rowH;
-        const on = ui.button({ id: 'more-' + i, x: 12, y: ry, w: app.W - 24, h: rowH - 4, onTap: () => { if (i !== 5) app.pop(); go(); } });
+        const on = ui.button({ id: 'more-' + id, x: 12, y: ry, w: app.W - 24, h: rowH - 4, onTap: () => { app.pop(); go(); } });
         if (on) ui.fillRR(ctx, 12, ry, app.W - 24, rowH - 4, 12, th.soft);
         ui.text(ctx, name, 32, ry + (rowH - 4) / 2, 17, th.text, 'left', 600);
         if (sub) ui.text(ctx, sub, app.W - 52, ry + (rowH - 4) / 2, 13, th.sub, 'right');
@@ -2967,7 +3152,9 @@ module.exports = function (app) {
         ui.icons.check(ctx, app.W / 2, m.y + 52, 30, '#FFFFFF', 3.4);
         ui.text(ctx, '学会了「' + T.LESSONS[i].name + '」', app.W / 2, m.y + 104, 20, th.text, 'center', 700);
         const bx = m.x + 20, bw = m.w - 40;
-        if (lesson.then === 'challenge') {
+        if (lesson.then === 'duo') {
+          ui.pill(ctx, th, 'lf-duo', bx, m.y + 140, bw, 50, '回到约好的那一局', () => { app.pop(); app.go('duo'); }, 'primary');
+        } else if (lesson.then === 'challenge') {
           ui.pill(ctx, th, 'lf-challenge', bx, m.y + 140, bw, 50, '开始挑战（前 3 步带着你）', () => { app.pop(); app.startChallenge(true); }, 'primary');
         } else if (lesson.then === 'guided') {
           ui.pill(ctx, th, 'lf-guided', bx, m.y + 140, bw, 50, '开始第一局（带着你下）', () => { app.pop(); app.startGame(0, { guided: true }); }, 'primary');
@@ -3249,7 +3436,7 @@ module.exports = function (app) {
       const hk = LY.k('result.head', rh), sk = LY.k('result.score', rs), ck = LY.k('result.stats', rc);
       const hx = rh.x + rh.w / 2, hy = rh.y + rh.h * 0.29;
       const tierName = S.TIERS[b.tier].name;
-      if (b.mode === 'challenge') {
+      if (b.challenge) {
         // ---- 好友挑战：两人对比（两张卡放在数据卡的位置）----
         const r = app.challengeResult(b);
         ui.text(ctx, r.win ? '你赢了！' : '差一点', hx, hy, Math.round(28 * hk), r.win ? th.ok : th.text, 'center', 700);
@@ -3269,7 +3456,7 @@ module.exports = function (app) {
         ui.pill(ctx, th, 'res-home', rHome.x, rHome.y, rHome.w, rHome.h, '回首页', () => app.go('home'), 'card');
       } else {
         ui.text(ctx, '完成！', hx, hy, Math.round(28 * hk), th.text, 'center', 700);
-        ui.text(ctx, (b.mode === 'daily' ? '每日挑战 · ' + b.date.slice(5).replace('-', '月') + '日 · ' : '') + tierName, hx, rh.y + rh.h * 0.77, Math.round(14 * hk), th.sub, 'center');
+        ui.text(ctx, (b.mode === 'daily' ? '每日挑战 · ' + b.date.slice(5).replace('-', '月') + '日 · ' : b.mode === 'duo' ? '约好一起做 · ' : '') + tierName, hx, rh.y + rh.h * 0.77, Math.round(14 * hk), th.sub, 'center');
         // 分数滚上去
         const shown = res.fromCut ? b.score : Math.round(b.score * ui.ease.out(p));
         ui.text(ctx, String(shown), rs.x + rs.w / 2, rs.y + rs.h * 0.33, Math.round(44 * sk), th.primary, 'center', 700);
@@ -3293,8 +3480,10 @@ module.exports = function (app) {
         });
         // 按钮：发给朋友挑战这一题（主按钮）；再来一局 / 回首页并排
         if (!app.scenes.result.ready()) { app.animate(400); return; } // 按钮晚 20 帧
-        ui.pill(ctx, th, 'res-share', rShare.x, rShare.y, rShare.w, rShare.h, '发给朋友挑战这一题', () => app.shareChallenge(b), 'primary');
+        if (b.mode === 'duo') ui.pill(ctx, th, 'res-share', rShare.x, rShare.y, rShare.w, rShare.h, '把成绩发给他（他做完才看得到）', () => app.shareChallenge(b, false, 'duo'), 'primary');
+        else ui.pill(ctx, th, 'res-share', rShare.x, rShare.y, rShare.w, rShare.h, '发给朋友挑战这一题', () => app.shareChallenge(b), 'primary');
         if (b.mode === 'daily') ui.pill(ctx, th, 'res-cal', rAgain.x, rAgain.y, rAgain.w, rAgain.h, '回日历', () => app.go('daily'), 'card');
+        else if (b.mode === 'duo') ui.pill(ctx, th, 'res-again', rAgain.x, rAgain.y, rAgain.w, rAgain.h, '再约一局', () => app.duoSheet(), 'card');
         else ui.pill(ctx, th, 'res-again', rAgain.x, rAgain.y, rAgain.w, rAgain.h, '再来一局', () => app.startGame(b.tier), 'card');
         ui.pill(ctx, th, 'res-home', rHome.x, rHome.y, rHome.w, rHome.h, '回首页', () => app.go('home'), 'card');
       }
@@ -4068,7 +4257,7 @@ module.exports = function (app) {
       const th = app.th;
       layout(); // 每帧按布局表算一次（便宜；编辑器拖动时立刻跟上）
       const tierName = S.TIERS[b.tier].name;
-      const title = b.mode === 'daily' ? '每日挑战 · ' + tierName : b.mode === 'challenge' ? '好友挑战 · ' + tierName : tierName;
+      const title = b.mode === 'daily' ? '每日挑战 · ' + tierName : b.mode === 'challenge' ? '好友挑战 · ' + tierName : b.mode === 'duo' ? '一起做 · ' + tierName : tierName;
       app.header(ctx, title, () => { persist(); app.go(b.mode === 'daily' ? 'daily' : 'home'); }, (ctx2, y, h) => {
         const x = app.headerRight - 48;
         const on = ui.button({ id: 'pause', x, y, w: 44, h, onTap: () => { paused = !paused; persist(); } });
@@ -4143,6 +4332,98 @@ module.exports = function (app) {
     selDigit: () => selDigit,
     noteMode: () => noteMode,
   };
+};
+
+});
+__def("js/scene_progress.js", function (module, exports, require) {
+// 进度表（0.9，Cc：「展示大家最近都在挑战哪个难度、打了多少局、胜率怎么样」）
+// 上面：我自己最近 7 天（几局、胜率、最常玩哪一档）+ 每一档的总局数和胜率。
+// 下面：好友最近在玩什么（微信好友数据，只能在开放数据域里画；浏览器预览放几条示例）。
+const P = require('./platform.js');
+const ui = require('./ui.js');
+const S = require('./sudoku.js');
+const store = require('./store.js');
+
+const SAMPLE = [ // 浏览器预览用的示例好友
+  { name: '小林', tier: 2, week: 12, won: 9 },
+  { name: '阿珍', tier: 3, week: 5, won: 3 },
+  { name: '老周', tier: 1, week: 21, won: 20 },
+];
+const pct = (a, b) => (b ? Math.round((a / b) * 100) + '%' : '—');
+
+module.exports = function (app) {
+  let odBox = null;
+  function askFriends(box) {
+    if (!P.hasOpenData) return;
+    const od = P.openDataCanvas(), th = app.th;
+    od.width = Math.round(box.w * app.dpr);
+    od.height = Math.round(box.h * app.dpr);
+    P.postOpenData({ type: 'progress', key: 'progress', dpr: app.dpr, tiers: S.TIERS.map((x) => x.name), colors: { card: th.card, soft: th.soft, text: th.text, sub: th.sub, gold: th.gold, primary: th.primary } });
+  }
+
+  app.scenes.progress = {
+    enter() { odBox = null; },
+    live: () => P.hasOpenData,
+    draw(ctx) {
+      const th = app.th, W = app.W;
+      app.header(ctx, '进度表', () => app.go('home'));
+      let y = app.headerY + app.headerH + 10;
+      // ---- 我：最近 7 天 ----
+      const r = store.recent(7);
+      ui.card(ctx, 16, y, W - 32, 120, 16, th);
+      ui.text(ctx, '我 · 最近 7 天', 32, y + 22, 14, th.sub, 'left', 600);
+      const cols = [
+        [String(r.games), '局'],
+        [pct(r.won, r.games), '胜率'],
+        [r.tier >= 0 ? S.TIERS[r.tier].name : '—', '最常玩'],
+      ];
+      const cw = (W - 32) / 3;
+      cols.forEach(([v, l], i) => {
+        const cx = 16 + cw * (i + 0.5);
+        ui.text(ctx, v, cx, y + 64, 26, i === 2 ? th.primary : th.text, 'center', 700);
+        ui.text(ctx, l, cx, y + 96, 12, th.sub, 'center');
+      });
+      y += 132;
+      // ---- 每一档（普通局）：玩了几局、赢了几局 ----
+      const tiers = S.TIERS.map((tr, i) => ({ name: tr.name, s: store.data.stats[i] })).filter((x) => x.s.played > 0);
+      const rowH = 30, th2 = 30 + Math.max(1, tiers.length) * rowH + 8;
+      ui.card(ctx, 16, y, W - 32, th2, 16, th);
+      ui.text(ctx, '每一档（普通局）', 32, y + 18, 13, th.sub, 'left', 600);
+      ui.text(ctx, '局数', W - 150, y + 18, 12, th.sub, 'right');
+      ui.text(ctx, '胜率', W - 36, y + 18, 12, th.sub, 'right');
+      if (!tiers.length) ui.text(ctx, '还没玩过', 32, y + 30 + rowH / 2, 14, th.faint);
+      tiers.forEach((x, i) => {
+        const ry = y + 30 + i * rowH + rowH / 2;
+        ui.text(ctx, x.name, 32, ry, 15, th.text, 'left', 600);
+        ui.text(ctx, String(x.s.played), W - 150, ry, 15, th.text, 'right', 600);
+        ui.text(ctx, pct(x.s.won, x.s.played), W - 36, ry, 15, th.text, 'right', 600);
+      });
+      y += th2 + 16;
+      // ---- 好友最近在玩什么 ----
+      ui.text(ctx, '好友最近在玩', 20, y, 15, th.text, 'left', 700);
+      y += 14;
+      const box = { x: 16, y, w: W - 32, h: Math.max(120, app.bottom - 16 - y) };
+      ui.card(ctx, box.x, box.y, box.w, box.h, 16, th);
+      const od = P.openDataCanvas();
+      if (od) {
+        // 微信里：开放数据域画好的好友列表贴进来
+        if (!odBox || odBox.w !== box.w || odBox.h !== box.h) { odBox = box; askFriends(box); }
+        ctx.drawImage(od, 0, 0, od.width, od.height, box.x, box.y, box.w, box.h);
+      } else {
+        ui.text(ctx, '示例 · 微信里显示你真的好友（他们也玩过才有）', box.x + box.w / 2, box.y + 20, 11, th.sub, 'center');
+        SAMPLE.forEach((f, i) => friendRow(ctx, th, box.x + 12, box.y + 36 + i * 60, box.w - 24, f.name, f.tier, f.week, f.won));
+      }
+    },
+  };
+  function friendRow(ctx, th, x, y, w, name, tier, week, won) {
+    ui.fillRR(ctx, x, y, w, 52, 12, th.soft);
+    ctx.beginPath(); ctx.arc(x + 28, y + 26, 16, 0, Math.PI * 2); ctx.fillStyle = th.faint; ctx.fill();
+    ui.text(ctx, name.slice(0, 1), x + 28, y + 26, 14, '#FFFFFF', 'center', 700);
+    ui.text(ctx, name, x + 54, y + 17, 15, th.text, 'left', 600);
+    ui.text(ctx, '最近在玩「' + S.TIERS[tier].name + '」', x + 54, y + 37, 12, th.sub);
+    ui.text(ctx, '本周 ' + week + ' 局', x + w - 14, y + 17, 14, th.text, 'right', 600);
+    ui.text(ctx, '胜率 ' + pct(won, week), x + w - 14, y + 37, 12, th.sub, 'right');
+  }
 };
 
 });
@@ -4372,9 +4653,36 @@ data.stats = S.TIERS.map((_, i) => Object.assign(blankStats(), (data.stats || []
 function save() { P.save(KEY, data); }
 
 // 开一局：算一次「已玩」。如果上一局没下完就被替换，算输（连胜清零）
+// 最近的对局流水（进度表用）：{ d 日期, t 档, w 1 赢 / 0 输或没下完, m 模式 }，最多留 300 条
+function logGame(b, w) {
+  if (!b || b.mode === 'lesson' || b.logged) return;
+  b.logged = true; // 同一局只记一次（重开、换局可能先后各调一次）
+  const log = data.log || (data.log = []);
+  log.push({ d: dateKey(new Date()), t: b.tier, w: w ? 1 : 0, m: b.mode });
+  if (log.length > 300) log.splice(0, log.length - 300);
+  uploadProgress();
+}
+// 进度表：最近 7 天玩了几局、赢了几局、最常玩哪一档
+function recent(days) {
+  const from = dateKey(new Date(Date.now() - (days - 1) * 864e5));
+  const list = (data.log || []).filter((x) => x.d >= from);
+  const byTier = {};
+  list.forEach((x) => { byTier[x.t] = (byTier[x.t] || 0) + 1; });
+  let tier = -1, n = 0;
+  for (const t in byTier) if (byTier[t] >= n) { n = byTier[t]; tier = +t; }
+  if (tier < 0 && list.length === 0 && (data.log || []).length) tier = data.log[data.log.length - 1].t;
+  return { games: list.length, won: list.filter((x) => x.w).length, tier };
+}
+// 给好友看的进度（微信好友数据，开放数据域里画）
+function uploadProgress() {
+  const r = recent(7);
+  P.uploadKV('progress', JSON.stringify({ tier: r.tier, week: r.games, won: r.won, t: Math.floor(Date.now() / 1000) }));
+}
+
 function startGame(tier, mode) {
   const cur = data.current;
   if (cur && !cur.done && cur.mode === 'normal') data.stats[cur.tier].streak = 0;
+  if (cur && !cur.done) logGame(cur, 0); // 上一局没下完就换掉：算没做完
   if (mode === 'normal') data.stats[tier].played++;
   save();
 }
@@ -4391,15 +4699,24 @@ function recordWin(b) {
     P.uploadScore('best_' + S.TIERS[b.tier].id, s.bestScore, { time: s.best });
   } else if (b.mode === 'challenge') {
     data.challenges = (data.challenges || 0) + 1;
+  } else if (b.mode === 'duo') {
+    data.duos = (data.duos || 0) + 1;
   } else if (b.mode === 'daily') {
     data.daily[b.date] = { time: b.elapsed, score: b.score };
     P.uploadScore('daily_' + b.date.slice(0, 7), monthScore(b.date.slice(0, 7)));
   }
+  // 做完的题记下自己的成绩：朋友发来同一题的成绩时，直接并排比（不用再做一遍）
+  const fin = data.finished || (data.finished = {});
+  fin[b.puzzle] = { time: b.elapsed, mistakes: b.mistakes, score: b.score, tier: b.tier, at: Date.now() };
+  const keys = Object.keys(fin);
+  if (keys.length > 60) keys.sort((a, c) => fin[a].at - fin[c].at).slice(0, keys.length - 60).forEach((k) => delete fin[k]);
+  logGame(b, 1);
   data.current = null;
   save();
 }
 function recordLoss(b) {
   if (b.mode === 'normal') data.stats[b.tier].streak = 0;
+  logGame(b, 0);
   save();
 }
 function monthScore(ym) {
@@ -4424,7 +4741,7 @@ function dailyPick(key, bank) {
   return { tier, idx: half + (h % (list.length - half)) };
 }
 
-module.exports = { data, save, startGame, recordWin, recordLoss, dateKey, dailyPick, monthScore };
+module.exports = { data, save, startGame, recordWin, recordLoss, dateKey, dailyPick, monthScore, recent, logGame };
 
 });
 __def("js/sudoku.js", function (module, exports, require) {

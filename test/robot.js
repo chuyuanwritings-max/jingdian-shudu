@@ -95,7 +95,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await tap('hdr-back', 400);
 
   // ---------- 2. 其余六课（含新加的区块排除、数对）----------
-  await more(0);
+  await more('lessons');
   await shot('07_教学目录');
   const LESSON_SHOTS = { 2: { '1,end': '08_排除法_红线讲因果' }, 3: { '1,end': '09_唯一候选' }, 4: { '1,end': '10_笔记_自动擦掉' }, 5: { '1,end': '11_区块排除', '2,0': '12_区块排除_练习' }, 6: { '1,end': '13_数对', '2,0': '14_数对_练习' } };
   for (let li = 1; li < 7; li++) {
@@ -112,11 +112,11 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await tap('hdr-back', 400);
   ok((await scene()) === 'home', '回首页');
   await shot('09_首页');
-  await more(4);
+  await more('brain');
   await shot('10_数独练脑');
   ok((await scene()) === 'brain', '练脑页能打开');
   await tap('hdr-back', 400);
-  await more(5);
+  await more('settings');
   await shot('11_设置');
   await tap('set-look', 500);
   ok((await scene()) === 'look', '设置 → 主题页');
@@ -308,10 +308,10 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
 
   // ---------- 7. 战绩、好友榜 ----------
   await tap('hdr-back', 400);
-  await more(2);
+  await more('stats');
   await shot('29_战绩');
   await tap('hdr-back', 400);
-  await more(3);
+  await more('rank');
   await shot('30_好友榜_浏览器里');
   ok((await scene()) === 'rank', '好友榜页能打开');
 
@@ -392,6 +392,45 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     await tap('focus-chip', 400);
     ok(!!(await regionOf('focus-learn')), '点小条：讲这一招，能去学');
     await tap('focus-ok', 300);
+  }
+
+  // ---------- 9c. 约好友一起做 + 进度表 ----------
+  {
+    await ev(() => { window.__app.overlays.length = 0; window.__app.go('home'); });
+    await page.waitForTimeout(300);
+    await more('duo');
+    ok(!!(await regionOf('duo-send')), '更多 → 约好友一起做：选难度、选几分钟后开始');
+    await tap('duo-tier-1', 100); await tap('duo-delay-3', 100);
+    await tap('duo-send', 600);
+    const inv = await ev(() => window.__app.lastShare);
+    const dq = inv && inv.q && String(inv.q.d).split('.');
+    ok(!!dq && dq[0] === '1' && Math.abs(+dq[2] - Date.now() / 1000 - 180) < 10 && /^[0-9]{81}$/.test(inv.q.p), '邀请卡：「简单」、3 分钟后开始、同一道题（' + (inv && inv.title) + '）');
+    ok((await scene()) === 'duo', '发完邀请进等候室');
+    await shot('34_约好友一起做_等候室');
+    // 朋友（新浏览器）点开一张 4 秒后开始的邀请：倒计时 → 到点自动开同一题
+    const ctx3 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+    const p3 = await ctx3.newPage();
+    p3.on('pageerror', (e) => errors.push('朋友3：' + String(e)));
+    const at = Math.ceil(Date.now() / 1000) + 4;
+    await p3.goto(url + '?d=1.' + dq[1] + '.' + at + '&p=' + inv.q.p);
+    await p3.waitForTimeout(1200);
+    ok((await p3.evaluate(() => window.__app.sceneName)) === 'duo', '朋友点开邀请：到等候室，题目盖着、倒计时');
+    await p3.waitForTimeout(4200);
+    const gb = await p3.evaluate(() => { const b = window.__app.testHooks.board(); return { scene: window.__app.sceneName, mode: b && b.mode, puzzle: b && b.puzzle }; });
+    ok(gb.scene === 'play' && gb.mode === 'duo' && gb.puzzle === inv.q.p, '到点自动开局：同一道题，「一起做」模式');
+    await ctx3.close();
+    // 我做完过的题收到朋友的成绩：直接并排比
+    await ev((p) => { const s = window.__store.data; s.finished = s.finished || {}; s.finished[p] = { time: 200000, mistakes: 0, score: 2000, tier: 1, at: Date.now() }; s.duo = null; window.__app.overlays.length = 0; window.__app.openChallenge({ c: '1.0.250.2', p }); }, inv.q.p);
+    await page.waitForTimeout(700);
+    ok((await scene()) === 'result' && (await ev(() => window.__app.challengeResult({ elapsed: 200000, mistakes: 0, challenge: { time: 250000, mistakes: 2 } }).win)), '做完过的题收到朋友成绩：直接两人并排比，不用再做一遍');
+    // 进度表
+    await ev(() => { window.__app.overlays.length = 0; window.__app.go('home'); });
+    await page.waitForTimeout(300);
+    await more('progress');
+    ok((await scene()) === 'progress', '更多 → 进度表');
+    const rc = await ev(() => window.__store.recent(7));
+    ok(rc.games > 0 && rc.tier >= 0, '进度表：最近 7 天 ' + rc.games + ' 局、赢 ' + rc.won + ' 局、最常玩「' + ['入门', '简单', '中等', '困难', '专家', '大师'][rc.tier] + '」');
+    await shot('35_进度表');
   }
 
   // ---------- 9b. 界面编辑模式：编辑器代码不进微信包；layout.json 改了游戏照着走 ----------

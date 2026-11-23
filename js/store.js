@@ -31,9 +31,36 @@ data.stats = S.TIERS.map((_, i) => Object.assign(blankStats(), (data.stats || []
 function save() { P.save(KEY, data); }
 
 // 开一局：算一次「已玩」。如果上一局没下完就被替换，算输（连胜清零）
+// 最近的对局流水（进度表用）：{ d 日期, t 档, w 1 赢 / 0 输或没下完, m 模式 }，最多留 300 条
+function logGame(b, w) {
+  if (!b || b.mode === 'lesson' || b.logged) return;
+  b.logged = true; // 同一局只记一次（重开、换局可能先后各调一次）
+  const log = data.log || (data.log = []);
+  log.push({ d: dateKey(new Date()), t: b.tier, w: w ? 1 : 0, m: b.mode });
+  if (log.length > 300) log.splice(0, log.length - 300);
+  uploadProgress();
+}
+// 进度表：最近 7 天玩了几局、赢了几局、最常玩哪一档
+function recent(days) {
+  const from = dateKey(new Date(Date.now() - (days - 1) * 864e5));
+  const list = (data.log || []).filter((x) => x.d >= from);
+  const byTier = {};
+  list.forEach((x) => { byTier[x.t] = (byTier[x.t] || 0) + 1; });
+  let tier = -1, n = 0;
+  for (const t in byTier) if (byTier[t] >= n) { n = byTier[t]; tier = +t; }
+  if (tier < 0 && list.length === 0 && (data.log || []).length) tier = data.log[data.log.length - 1].t;
+  return { games: list.length, won: list.filter((x) => x.w).length, tier };
+}
+// 给好友看的进度（微信好友数据，开放数据域里画）
+function uploadProgress() {
+  const r = recent(7);
+  P.uploadKV('progress', JSON.stringify({ tier: r.tier, week: r.games, won: r.won, t: Math.floor(Date.now() / 1000) }));
+}
+
 function startGame(tier, mode) {
   const cur = data.current;
   if (cur && !cur.done && cur.mode === 'normal') data.stats[cur.tier].streak = 0;
+  if (cur && !cur.done) logGame(cur, 0); // 上一局没下完就换掉：算没做完
   if (mode === 'normal') data.stats[tier].played++;
   save();
 }
@@ -50,15 +77,24 @@ function recordWin(b) {
     P.uploadScore('best_' + S.TIERS[b.tier].id, s.bestScore, { time: s.best });
   } else if (b.mode === 'challenge') {
     data.challenges = (data.challenges || 0) + 1;
+  } else if (b.mode === 'duo') {
+    data.duos = (data.duos || 0) + 1;
   } else if (b.mode === 'daily') {
     data.daily[b.date] = { time: b.elapsed, score: b.score };
     P.uploadScore('daily_' + b.date.slice(0, 7), monthScore(b.date.slice(0, 7)));
   }
+  // 做完的题记下自己的成绩：朋友发来同一题的成绩时，直接并排比（不用再做一遍）
+  const fin = data.finished || (data.finished = {});
+  fin[b.puzzle] = { time: b.elapsed, mistakes: b.mistakes, score: b.score, tier: b.tier, at: Date.now() };
+  const keys = Object.keys(fin);
+  if (keys.length > 60) keys.sort((a, c) => fin[a].at - fin[c].at).slice(0, keys.length - 60).forEach((k) => delete fin[k]);
+  logGame(b, 1);
   data.current = null;
   save();
 }
 function recordLoss(b) {
   if (b.mode === 'normal') data.stats[b.tier].streak = 0;
+  logGame(b, 0);
   save();
 }
 function monthScore(ym) {
@@ -83,4 +119,4 @@ function dailyPick(key, bank) {
   return { tier, idx: half + (h % (list.length - half)) };
 }
 
-module.exports = { data, save, startGame, recordWin, recordLoss, dateKey, dailyPick, monthScore };
+module.exports = { data, save, startGame, recordWin, recordLoss, dateKey, dailyPick, monthScore, recent, logGame };

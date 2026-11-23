@@ -183,17 +183,21 @@ require('./overlays.js')(app);
 require('./scene_look.js')(app);
 require('./scene_welcome.js')(app);
 require('./scene_challenge.js')(app);
+require('./scene_duo.js')(app);
+require('./scene_progress.js')(app);
 require('./cuts.js')(app);
 
 // 朋友点挑战卡进来：直接到那一题的挑战页
-if (!app.openChallenge(P.launchQuery())) {
+// 朋友点「约你一起做」的邀请卡进来：直接到等候室
+const launchQ = P.launchQuery();
+if (!app.openDuo(launchQ) && !app.openChallenge(launchQ)) {
   if (!store.data.seen.tutorial) {
     app.go('welcome');
     // 第一次打开：开场过场（黑 → 那一块亮起来 → 主页图和游戏名亮相），播完露出「你玩过数独吗？」
     if (!store.data.seen.open) app.cutOpen();
   } else app.go('home');
 }
-P.onShow((q) => { if (q && q.c) app.openChallenge(q); });
+P.onShow((q) => { if (q && q.d) app.openDuo(q); else if (q && q.c) app.openChallenge(q); });
 frame();
 
 // 给机器人测试用（只在浏览器里挂）

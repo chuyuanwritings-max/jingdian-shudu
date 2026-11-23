@@ -26,7 +26,7 @@ function decode(q) {
 
 module.exports = function (app) {
   // 挑战卡上的图：5:4（微信分享卡片的比例），盘面只画题目原有的数
-  app.makeShareImage = (b, line1, line2) => {
+  app.makeShareImage = (b, line1, line2, btn) => {
     const th = app.th, w = 500, h = 400, d = 2;
     const c = P.makeCanvas(w * d, h * d);
     const g = c.getContext('2d');
@@ -41,28 +41,22 @@ module.exports = function (app) {
     ui.text(g, line1[1], tx, 160, 24, th.text, 'left', 700);
     ui.wrap(g, line2, tx, 200, tw, 15, 21, th.sub, 500);
     ui.fillRR(g, tx, 290, tw, 46, 23, th.primary);
-    ui.text(g, '来挑战', tx + tw / 2, 313, 18, th.primaryText, 'center', 700);
+    ui.text(g, btn || '来挑战', tx + tw / 2, 313, 18, th.primaryText, 'center', 700);
     return c;
   };
 
-  // 发挑战：mine = 我这一局（board）
-  app.shareChallenge = (b, isReply) => {
-    const tn = S.TIERS[b.tier].name;
-    // 用时先不说（Cc：「她做完成功之后，才看得到我的时间」）：做完这一题才揭晓
-    const title = isReply ? '我也解开了这题，该你了（做完才看得到我的用时）' : '我解开了这题「' + tn + '」数独，你来试试？做完才看得到我的用时';
-    const img = app.makeShareImage(b, ['我解开了', '这一题'], '「' + tn + '」数独\n做完才揭晓我的用时');
-    const q = encode(b);
-    if (P.shareToWx(title, q, P.canvasImage(img))) return;
-    // 浏览器预览：弹一个分享窗，给 Cc 看朋友会收到什么，能复制链接或用手机自带的分享
+  // 发一张微信卡片：微信里直接调分享；浏览器预览弹一个分享窗，给 Cc 看朋友会收到什么，能复制链接或用手机自带的分享
+  app.shareCard = (title, q, img, sheetTitle) => {
+    if (P.shareToWx(title, q, P.canvasImage(img))) return null;
     const url = P.shareLink(q);
     const dataUrl = P.canvasImage(img);
-    app.lastShare = { url, title };
+    app.lastShare = { url, title, q };
     app.push({
       onBackdrop: () => app.pop(),
       draw(ctx, t, p) {
         const th = app.th;
         const hh = 470 + (app.H - app.bottom);
-        const y = app.sheet(ctx, p, hh, '发给朋友挑战');
+        const y = app.sheet(ctx, p, hh, sheetTitle || '发给朋友挑战');
         ui.text(ctx, '朋友会收到这样一张卡片：', 24, y + 66, 13, th.sub);
         // 卡片预览（直接画同一张图）
         const cw = app.W - 48, ch = cw * 0.8;
@@ -80,13 +74,33 @@ module.exports = function (app) {
     return dataUrl;
   };
 
+  // 发挑战 / 发成绩：b = 我这一局。kind = 'duo'：约好一起做的那题，做完互发成绩
+  app.shareChallenge = (b, isReply, kind) => {
+    const tn = S.TIERS[b.tier].name;
+    // 用时先不说（Cc：「她做完成功之后，才看得到我的时间」）：做完这一题才揭晓
+    const title = kind === 'duo' ? '约好一起做的那题，我做完了！你做完就能看到我的用时'
+      : isReply ? '我也解开了这题，该你了（做完才看得到我的用时）' : '我解开了这题「' + tn + '」数独，你来试试？做完才看得到我的用时';
+    const img = app.makeShareImage(b, kind === 'duo' ? ['我做完了', '约好的那一题'] : ['我解开了', '这一题'], '「' + tn + '」数独\n做完才揭晓我的用时');
+    return app.shareCard(title, encode(b), img, kind === 'duo' ? '把成绩发给他' : '发给朋友挑战');
+  };
+
   // ---------- 朋友点开 ----------
   let ch = null;
   app.openChallenge = (q) => {
     const c = decode(q);
     if (!c) return false;
     ch = c;
-    app.go('challenge');
+    const mine = (store.data.finished || {})[c.puzzle], cur = store.data.current;
+    if (mine) {
+      // 这一题我已经做完了（比如约好一起做、或者朋友把成绩发回来）：直接两人并排比，不用再做一遍
+      app.go('result', { board: { mode: 'challenge', tier: c.tier, idx: c.idx, puzzle: c.puzzle, elapsed: mine.time, mistakes: mine.mistakes, score: mine.score || 0, revives: 0, challenge: { time: c.time, mistakes: c.mistakes }, compareOnly: true } });
+    } else if (cur && !cur.done && cur.puzzle === c.puzzle) {
+      // 这一题我正在做：把朋友的成绩挂上，做完就揭晓
+      cur.challenge = { time: c.time, mistakes: c.mistakes };
+      store.save();
+      app.continueGame();
+      setTimeout(() => app.toast('朋友做完了！\n你做完这一题就能看到他的用时', 2600), 300);
+    } else app.go('challenge');
     return true;
   };
   app.startChallenge = (guided) => {

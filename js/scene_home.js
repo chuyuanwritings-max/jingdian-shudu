@@ -33,24 +33,29 @@ module.exports = function (app) {
   }
 
   // 「更多」：半屏面板，六行
+  // 「更多」：半屏面板。每行一个固定的 id（more-lessons……），以后加行不打乱
   app.moreSheet = () => app.push({
     onBackdrop: () => app.pop(),
     draw(ctx, t, p) {
-      const th = app.th, rowH = 56;
+      const th = app.th;
       const learned = T.LESSONS.filter((L) => store.data.lessons[L.id]).length;
       const rows = [
-        ['教学', '已学 ' + learned + ' / ' + T.LESSONS.length, () => app.go('lessons')],
-        ['主题', th.name, () => app.go('look', { back: { name: 'home' } })],
-        ['战绩', '', () => app.go('stats')],
-        ['好友榜', '', () => app.go('rank')],
-        ['数独练脑', '', () => app.go('brain')],
-        ['设置', '', () => { app.pop(); app.settingsSheet({ name: 'home' }); }],
+        ['lessons', '教学', '已学 ' + learned + ' / ' + T.LESSONS.length, () => app.go('lessons')],
+        ['duo', '约好友一起做', '同一题、同时开始', () => app.duoSheet()],
+        ['progress', '进度表', '最近玩什么、胜率', () => app.go('progress')],
+        ['look', '主题', th.name, () => app.go('look', { back: { name: 'home' } })],
+        ['stats', '战绩', '', () => app.go('stats')],
+        ['rank', '好友榜', '', () => app.go('rank')],
+        ['brain', '数独练脑', '', () => app.go('brain')],
+        ['settings', '设置', '', () => app.settingsSheet({ name: 'home' })],
       ];
+      // 小屏（iPhone SE）行矮一点，整张面板不超过屏幕 85%
+      const rowH = Math.max(44, Math.min(56, Math.floor((app.H * 0.85 - 74 - (app.H - app.bottom)) / rows.length)));
       const h = 58 + rows.length * rowH + 16 + (app.H - app.bottom);
       const y = app.sheet(ctx, p, h, '');
-      rows.forEach(([name, sub, go], i) => {
+      rows.forEach(([id, name, sub, go], i) => {
         const ry = y + 26 + i * rowH;
-        const on = ui.button({ id: 'more-' + i, x: 12, y: ry, w: app.W - 24, h: rowH - 4, onTap: () => { if (i !== 5) app.pop(); go(); } });
+        const on = ui.button({ id: 'more-' + id, x: 12, y: ry, w: app.W - 24, h: rowH - 4, onTap: () => { app.pop(); go(); } });
         if (on) ui.fillRR(ctx, 12, ry, app.W - 24, rowH - 4, 12, th.soft);
         ui.text(ctx, name, 32, ry + (rowH - 4) / 2, 17, th.text, 'left', 600);
         if (sub) ui.text(ctx, sub, app.W - 52, ry + (rowH - 4) / 2, 13, th.sub, 'right');

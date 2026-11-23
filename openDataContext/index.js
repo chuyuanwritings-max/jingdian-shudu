@@ -38,7 +38,58 @@ function draw(list, msg) {
     }
   });
 }
+// 进度表：好友最近在玩哪一档、这周几局、胜率（主游戏存的 KV：progress = { tier, week, won, t }）
+function drawProgress(list, msg) {
+  const d = msg.dpr || 2, c = msg.colors, tiers = msg.tiers || [];
+  const W = canvas.width / d, H = canvas.height / d;
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = c.card; ctx.fillRect(0, 0, W, H);
+  ctx.textBaseline = 'middle';
+  if (!list.length) {
+    ctx.fillStyle = c.sub; ctx.font = '15px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('好友还没玩过，约他一起做一题吧', W / 2, 50);
+    return;
+  }
+  list.slice(0, 30).forEach((u, i) => {
+    const y = 12 + i * 60, x = 12, w = W - 24;
+    if (y > H) return;
+    rr(x, y, w, 52, 12); ctx.fillStyle = c.soft; ctx.fill();
+    ctx.textAlign = 'left'; ctx.font = 'bold 15px sans-serif'; ctx.fillStyle = c.text;
+    ctx.fillText((u.nickname || '好友').slice(0, 8), x + 54, y + 17);
+    ctx.font = '12px sans-serif'; ctx.fillStyle = c.sub;
+    ctx.fillText(u.week ? '最近在玩「' + (tiers[u.tier] || '') + '」' : '这周没玩', x + 54, y + 37);
+    ctx.textAlign = 'right'; ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = c.text;
+    ctx.fillText('本周 ' + u.week + ' 局', x + w - 14, y + 17);
+    ctx.font = '12px sans-serif'; ctx.fillStyle = c.sub;
+    ctx.fillText('胜率 ' + (u.week ? Math.round((u.won / u.week) * 100) + '%' : '—'), x + w - 14, y + 37);
+    if (u.avatarUrl) {
+      const img = wx.createImage();
+      img.onload = () => { ctx.save(); ctx.beginPath(); ctx.arc(x + 28, y + 26, 16, 0, Math.PI * 2); ctx.clip(); ctx.drawImage(img, x + 12, y + 10, 32, 32); ctx.restore(); };
+      img.src = u.avatarUrl;
+    }
+  });
+}
 wx.onMessage((msg) => {
+  if (msg && msg.type === 'progress') {
+    wx.getFriendCloudStorage({
+      keyList: ['progress'],
+      success(res) {
+        const now = Date.now() / 1000;
+        const list = (res.data || []).map((u) => {
+          let v = null;
+          try { v = JSON.parse((u.KVDataList || []).find((x) => x.key === 'progress').value); } catch (e) {}
+          if (!v) return null;
+          // 一周以前的数据算「这周没玩」
+          const fresh = now - (v.t || 0) < 7 * 86400;
+          return { nickname: u.nickname, avatarUrl: u.avatarUrl, tier: v.tier, week: fresh ? v.week || 0 : 0, won: fresh ? v.won || 0 : 0, t: v.t || 0 };
+        }).filter(Boolean).sort((a, b) => b.week - a.week || b.t - a.t);
+        drawProgress(list, msg);
+      },
+      fail() { drawProgress([], msg); },
+    });
+    return;
+  }
   if (!msg || msg.type !== 'rank') return;
   wx.getFriendCloudStorage({
     keyList: [msg.key],

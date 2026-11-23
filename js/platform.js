@@ -108,6 +108,11 @@ function uploadScore(key, score, extra) {
   const value = JSON.stringify({ wxgame: { score, update_time: Math.floor(Date.now() / 1000) }, extra: extra || {} });
   wx.setUserCloudStorage({ KVDataList: [{ key, value }], fail() {} });
 }
+// 存一条给好友看的数据（不是分数榜格式，开放数据域自己解析）
+function uploadKV(key, value) {
+  if (!isWx || !wx.setUserCloudStorage) return;
+  wx.setUserCloudStorage({ KVDataList: [{ key, value: String(value).slice(0, 1000) }], fail() {} });
+}
 function openDataCanvas() {
   return hasOpenData ? wx.getOpenDataContext().canvas : null;
 }
@@ -241,5 +246,5 @@ module.exports = {
   isWx, setup, makeCanvas, now, nextFrame, onHide, vibrate, setVibrate, showRewardedAd,
   hasOpenData, uploadScore, openDataCanvas, postOpenData, enableShare,
   load, save, exposeForTest, sound, unlockAudio, setMuted,
-  loadImage, launchQuery, onShow, canvasImage, shareLink, shareToWx, systemShare, copyText,
+  uploadKV, loadImage, launchQuery, onShow, canvasImage, shareLink, shareToWx, systemShare, copyText,
 };
