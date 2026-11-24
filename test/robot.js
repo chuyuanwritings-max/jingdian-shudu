@@ -320,10 +320,15 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await page.waitForTimeout(300);
   await tap('wel-some', 400);
   ok(await ev(() => window.__app.lessonHooks.state().quiz), '选「会一点」→ 两道小测');
+  const q1 = await ev(() => { const L = window.__app.lessonHooks.state(), s = L.steps[0]; return { hl: s.hl, target: s.actions[0].cell, text: s.text }; });
+  ok(!!q1.hl && q1.hl.cells.length === 9 && q1.hl.digit > 0, '第 1 题：要找的那一宫亮金边、要放的数（' + (q1.hl && q1.hl.digit) + '）盘上和键上都亮黄：「' + q1.text + '」');
+  // Cc 的情况：先点了这一宫里别的格子看看，再做对 → 还是推荐「简单」（以前点错格子就算错、一错就推荐入门）
+  const wrongCell = q1.hl.cells.find((k) => k !== q1.target);
+  await click(await ev((k) => window.__app.lessonHooks.cellCenter(k), wrongCell), 150);
   await runLesson({ '0,0': '18_会一点_小测' });
   await shot('19_小测_推荐难度');
   await tap('quiz-go', 600);
-  ok((await ev(() => window.__app.testHooks.board().tier)) === 1, '两题都对 → 推荐「简单」开局');
+  ok((await ev(() => window.__app.testHooks.board().tier)) === 1, '两题都做出来（中间点错过一个格子）→ 推荐「简单」开局');
 
   // ---------- 9. 朋友点开挑战链接（另一个全新的浏览器 = 第一次玩的朋友）----------
   const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });

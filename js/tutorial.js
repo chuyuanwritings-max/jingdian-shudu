@@ -36,7 +36,7 @@ function lessonRules() {
     {
       text: '试试看：这一行缺了一个数。先点空格，再点下面的数字。',
       show: minus(uniq(base.concat(rowCells)), [blank]), focus: rowCells,
-      actions: [{ cell: blank }, { num: SOL[blank] }],
+      actions: [{ cell: blank }, { num: SOL[blank] }], hl: { cells: rowCells },
       says: ['先点这一行的空格', '1 到 9 里，这一行少了哪个？点它'],
     },
   ];
@@ -57,7 +57,7 @@ function lessonLastCell() {
     {
       text: '这一宫也只剩一格。它缺哪个数？',
       show: minus(uniq(base.concat(boxCells)), [b2]), focus: boxCells,
-      actions: [{ cell: b2 }, { num: SOL[b2] }], says: ['点这一宫的空格', '这一宫少了哪个数？'],
+      actions: [{ cell: b2 }, { num: SOL[b2] }], hl: { cells: boxCells }, says: ['点这一宫的空格', '这一宫少了哪个数？'],
     },
     {
       text: '这次不帮你亮了：盘上有一个宫只差一格，找到它，填上。',
@@ -98,16 +98,16 @@ function lessonHatch() {
   const fill3 = cellsOf(B(box3)).filter((k) => k !== t3 && crossed.indexOf(k) < 0);
   const base3 = scatter(14, cellsOf(B(box3)).concat(g3, cellsOf(R(S.ROW(t3))), cellsOf(Cc(S.COL(t3)))));
   return [
-    { text: '亮着的宫里还没有 ' + h.v + '。' + h.v + ' 能放在哪一格？', show, focus },
-    { text: '每个 ' + h.v + ' 都把自己那一行、那一列「划掉」：同一行、同一列不能再有 ' + h.v + '。', show, focus, rays: h.rays },
-    { text: '宫里只剩一格没被划掉——' + h.v + ' 就放这里。这招叫「排除法」。', show, focus, rays: h.rays, demo: { k: t, v: h.v } },
+    { text: '亮着的这一宫还没有 ' + h.v + '。' + h.v + ' 能放哪？', show, focus, hl: { cells: cellsOf(B(box)), digit: h.v } },
+    { text: '每个 ' + h.v + ' 都划掉自己那一行、那一列。', show, focus, rays: h.rays, hl: { cells: cellsOf(B(box)), digit: h.v } },
+    { text: '只剩一格没被划掉——' + h.v + ' 就放这里。这叫「排除法」。', show, focus, rays: h.rays, demo: { k: t, v: h.v }, hl: { cells: cellsOf(B(box)), digit: h.v } },
     {
-      text: '轮到你：左上这一宫的 ' + h2.v + ' 放在哪？',
+      text: '轮到你：亮着的这一宫，' + h2.v + ' 放哪？', hl: { cells: cellsOf(B(box2)), digit: h2.v },
       show: uniq(base2.concat(h2.givers)), focus: cellsOf(B(box2)).concat(h2.givers), rays: h2.rays, raysAfterMiss: true,
       actions: [{ cell: t2 }, { num: h2.v }], says: ['看亮着的 ' + h2.v + '，它们划掉了哪些行和列？', '填 ' + h2.v],
     },
     {
-      text: '宫里已经有数的格子也不能放。右下这一宫的 ' + v3 + ' 放哪？',
+      text: '有数的格子也不能放。亮着的这一宫，' + v3 + ' 放哪？', hl: { cells: cellsOf(B(box3)), digit: v3 },
       show: uniq(base3.concat(g3, fill3)), focus: cellsOf(B(box3)).concat(g3),
       rays: [{ k: g3[0], dir: 'row' }, { k: g3[1], dir: 'col' }], raysAfterMiss: true,
       actions: [{ cell: t3 }, { num: v3 }], says: ['划掉的、已经有数的，都不行。剩哪一格？', '填 ' + v3],
@@ -136,12 +136,12 @@ function lessonNaked() {
     {
       text: '轮到你：亮着的这一格只能填几？',
       show: uniq(scatter(10, peersOf(k2)).concat(p2)), focus: peersOf(k2), mark: k2,
-      actions: [{ cell: k2 }, { num: SOL[k2] }], says: ['点亮着的那一格', '1–9 里，哪个数它的行、列、宫都没有？'], strikeAfterMiss: k2,
+      actions: [{ cell: k2 }, { num: SOL[k2] }], hl: { cells: [k2] }, says: ['点亮着的那一格', '1–9 里，哪个数它的行、列、宫都没有？'], strikeAfterMiss: k2,
     },
     {
       text: '再来一个。',
       show: uniq(scatter(10, peersOf(k3)).concat(p3)), focus: peersOf(k3), mark: k3,
-      actions: [{ cell: k3 }, { num: SOL[k3] }], says: ['点亮着的那一格', '它只能是几？'], strikeAfterMiss: k3,
+      actions: [{ cell: k3 }, { num: SOL[k3] }], hl: { cells: [k3] }, says: ['点亮着的那一格', '它只能是几？'], strikeAfterMiss: k3,
     },
   ];
 }
@@ -164,9 +164,9 @@ function lessonNotes() {
     { text: '格子里的小字叫「笔记」：一时定不下来，就把可能的数先记下。', show, focus, mark: X, notesPre: pre },
     { text: '同一行填上 ' + w + ' 以后，笔记里的 ' + w + ' 会自己擦掉。', show, focus, notesPre: pre, demo: { k: Y, v: w } },
     { text: '只剩 ' + a + ' 了，把它填上。', show: show.concat([Y]), focus, mark: X, notesPre: (() => { const o = {}; o[X] = S.bit(a); return o; })(),
-      actions: [{ cell: X }, { num: a }], says: ['点亮着的格子', '填 ' + a] },
+      actions: [{ cell: X }, { num: a }], hl: { cells: [X], digit: a }, says: ['点亮着的格子', '填 ' + a] },
     { text: '你也记一个：打开「笔记」，在亮着的格子里记下 ' + SOL[Z] + '。', show: show.concat([Y, X]), focus: null, mark: Z, noteTool: true,
-      actions: [{ note: true }, { cell: Z }, { num: SOL[Z] }], says: ['点「笔记」，打开它', '点亮着的格子', '点 ' + SOL[Z] + '，它会变成小字'] },
+      actions: [{ note: true }, { cell: Z }, { num: SOL[Z] }], hl: { cells: [Z], digit: SOL[Z] }, says: ['点「笔记」，打开它', '点亮着的格子', '点 ' + SOL[Z] + '，它会变成小字'] },
   ];
 }
 
@@ -190,10 +190,10 @@ function lessonPointing() {
   const rowRay = [{ k: zone[0], dir: 'row' }];
   const rowCRay = [{ k: kC, dir: 'row' }];
   return [
-    { text: '看左上这一宫：' + v + ' 还没放，下面两排都满了，' + v + ' 只能在最上面这一排（金色）。', show, focus, zone },
-    { text: v + ' 一定在这一排的金色格子里——那这一排的其他格子，就都不能是 ' + v + ' 了。', show, focus, zone, rays: rowRay },
+    { text: '左上这一宫下面两排满了，' + v + ' 只能在最上面一排（金色）。', show, focus, zone, hl: { cells: cellsOf(B(0)), digit: v } },
+    { text: v + ' 一定在金色格子里——这一排别处都不能是 ' + v + '。', show, focus, zone, rays: rowRay, hl: { cells: zone, digit: v } },
     {
-      text: '中间这一宫的 ' + v + ' 放在哪？（右上宫的 ' + v + ' 也挡住了一排）',
+      text: '亮着的这一宫，' + v + ' 放哪？', hl: { cells: cellsOf(B(1)), digit: v },
       show, focus, zone, rays: rowRay.concat(rowCRay),
       actions: [{ cell: kB }, { num: v }], says: ['上面一排不行、' + v + ' 那一排不行……剩哪一格？', '填 ' + v],
     },
@@ -221,7 +221,7 @@ function lessonPair() {
   return [
     { text: '这一排只剩三个空。左边两格都只能是 ' + lo + ' 或 ' + hi + '（它们那一列已经有 ' + c + ' 了）。', show, focus, notesPre: pre, zone: [p, q] },
     { text: lo + ' 和 ' + hi + ' 被这两格「包了」：不管谁是谁，这一排的别处都不能再是 ' + lo + '、' + hi + '。这叫「数对」。', show, focus, notesPre: pre, zone: [p, q], strikeNotes: strike },
-    { text: '那右边这一格只能是几？', show, focus, notesPre: pre, zone: [p, q], strikeNotes: strike, mark: t,
+    { text: '那右边这一格只能是几？', show, focus, notesPre: pre, zone: [p, q], strikeNotes: strike, mark: t, hl: { cells: [t] },
       actions: [{ cell: t }, { num: c }], says: ['点右边那一格', '划掉 ' + lo + '、' + hi + ' 以后，只剩哪个？'] },
   ];
 }

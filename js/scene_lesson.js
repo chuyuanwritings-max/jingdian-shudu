@@ -88,7 +88,7 @@ module.exports = function (app) {
           app.sound('place');
         }
         lesson.ai++;
-      } else if (exp.num !== undefined) { miss(lesson.sel); app.sound('wrong'); app.buzz('heavy'); }
+      } else if (exp.num !== undefined) { miss(lesson.sel); lesson.numMisses = (lesson.numMisses || 0) + 1; app.sound('wrong'); app.buzz('heavy'); }
     } else if (kind === 'note') {
       lesson.noteMode = !lesson.noteMode;
       app.sound('tap');
@@ -109,7 +109,8 @@ module.exports = function (app) {
   function next() {
     lesson.totalMisses += lesson.misses;
     if (lesson.si + 1 < lesson.steps.length) { lesson.si++; loadStep(); app.animate(300); return; }
-    if (lesson.quiz) { app.quizDone(lesson.totalMisses); return; }
+    // 小测：只数「填错的数」（点别的格子看看不算错）
+    if (lesson.quiz) { app.quizDone(lesson.numMisses || 0); return; }
     // 学完：先入账，再播过场（主页与过场设计 2.4、2.5），播完弹「下一课」
     const L0 = T.LESSONS[lesson.index];
     const relearn = !!store.data.lessons[L0.id];
@@ -169,6 +170,22 @@ module.exports = function (app) {
     });
   }
 
+  // 任务直接画在盘上（Cc：「你应该把左上这一宫高亮让我选才对……把左上这一宫和底下的数字 7 高亮」）：
+  // 要你看的那一宫 / 那一格外面一圈金边，一呼一吸地亮；问到的数，盘上的和数字键上的都亮黄（selDigit / active）
+  function drawTask(ctx, st, t) {
+    if (!st.hl || !st.hl.cells || lesson.ok) return;
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    st.hl.cells.forEach((k) => { const r = DB.cellRect(geo, k); x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y); x1 = Math.max(x1, r.x + r.s); y1 = Math.max(y1, r.y + r.s); });
+    const a = 0.55 + 0.45 * Math.sin((t - lesson.t0) / 260);
+    ctx.save();
+    ctx.globalAlpha = 0.35 * a; ctx.strokeStyle = '#FFC24A'; ctx.lineWidth = 9;
+    ui.rr(ctx, x0 - 2, y0 - 2, x1 - x0 + 4, y1 - y0 + 4, 8); ctx.stroke();
+    ctx.globalAlpha = 0.7 + 0.3 * a; ctx.strokeStyle = '#E0A815'; ctx.lineWidth = 3;
+    ui.rr(ctx, x0 - 1, y0 - 1, x1 - x0 + 2, y1 - y0 + 2, 7); ctx.stroke();
+    ctx.restore();
+    app.animate(60);
+  }
+
   app.scenes.lesson = {
     enter(args) {
       let index = args.index;
@@ -224,10 +241,11 @@ module.exports = function (app) {
       const showRays = st.rays && (!st.raysAfterMiss || lesson.misses > 0);
       DB.draw(ctx, th, geo, {
         vals, given: lesson.given, notes: lesson.notes, wrong: () => false,
-        selected: lesson.sel, sameHighlight: true, focus: st.focus,
-        rays: showRays ? st.rays : null, zone: st.zone, strikeNotes: st.strikeNotes, mark: st.mark, pops: lesson.fx.pops, rings: lesson.fx.rings, shake: lesson.fx.shake, now: t, tileStyle: store.data.settings.tileStyle,
+        selected: lesson.sel, sameHighlight: true, focus: st.focus, selDigit: st.hl && st.hl.digit,
+        rays: showRays ? st.rays : null, zone: st.zone || (st.hl && st.hl.cells), strikeNotes: st.strikeNotes, mark: st.mark, pops: lesson.fx.pops, rings: lesson.fx.rings, shake: lesson.fx.shake, now: t, tileStyle: store.data.settings.tileStyle,
       }, app.dpr);
 
+      drawTask(ctx, st, t);
       // 底部：练习步 = 工具 + 数字键；演示步 = 「下一步」
       const practice = !!st.actions && !lesson.ok;
       if (st.noteTool) {
@@ -236,7 +254,7 @@ module.exports = function (app) {
         ]);
       }
       if (practice) {
-        app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: (v) => act('num', v), noteMode: lesson.noteMode, highlight: exp && exp.num !== undefined && showHand(st, t) ? exp.num : 0 });
+        app.drawPad(ctx, { y: L.padY, h: L.padH, onPress: (v) => act('num', v), noteMode: lesson.noteMode, highlight: exp && exp.num !== undefined && showHand(st, t) ? exp.num : 0, active: st.hl && st.hl.digit });
       } else {
         const ready = lesson.ok || lesson.demoDone || !st.demo;
         if (ready) ui.pill(ctx, th, 'lnext', 16, L.padY + 4, W - 32, 54, lesson.si + 1 < lesson.steps.length ? '下一步' : '完成这一课', next, 'primary');

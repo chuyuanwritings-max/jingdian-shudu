@@ -62,9 +62,10 @@ module.exports = function (app) {
     },
   };
 
-  // 小测做完：两题都没错 → 简单；错过 → 入门 + 带练
+  // 小测做完：两题都做出来了、填错的数不超过 2 个 → 简单；填错 3 个以上 → 入门 + 带练
+  // （以前错一下就推荐入门，点别的格子看看也算错——Cc：「我两关都过了，他为什么还是推荐我从入门开始啊？」）
   app.quizDone = (misses) => {
-    const good = misses === 0;
+    const good = misses <= 2;
     if (!good) { store.data.level = 'new'; store.save(); }
     app.sound(good ? 'win' : 'correct');
     app.push({
@@ -73,7 +74,7 @@ module.exports = function (app) {
         const m = app.modal(ctx, p, 268);
         ctx.beginPath(); ctx.arc(app.W / 2, m.y + 50, 26, 0, Math.PI * 2); ctx.fillStyle = good ? th.ok : th.gold; ctx.fill();
         ui.icons.check(ctx, app.W / 2, m.y + 50, 30, '#FFFFFF', 3.4);
-        ui.text(ctx, good ? '两题都对！' : '差一点', app.W / 2, m.y + 100, 21, th.text, 'center', 700);
+        ui.text(ctx, good ? (misses ? '两题都做出来了！' : '两题都对！') : '差一点', app.W / 2, m.y + 100, 21, th.text, 'center', 700);
         ui.text(ctx, good ? '推荐你从「简单」开始' : '推荐从「入门」开始，第一局带着你下', app.W / 2, m.y + 130, 14, th.sub, 'center');
         const bx = m.x + 20, bw = m.w - 40;
         ui.pill(ctx, th, 'quiz-go', bx, m.y + 156, bw, 50, good ? '开始「简单」' : '开始「入门」', () => { app.pop(); app.startGame(good ? 1 : 0, good ? {} : { guided: true }); }, 'primary');
