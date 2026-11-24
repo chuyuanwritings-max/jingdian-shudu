@@ -186,6 +186,9 @@ module.exports = function (app) {
   };
   function startDaily(key) {
     const pick = store.dailyPick(key, bank);
+    const parts = key.split('-');
+    // 每日开场：运镜过场（播完 / 点一下跳过再进局）
+    if (app.cutDaily) { app.cutDaily((+parts[1]) + '月' + (+parts[2]) + '日 · ' + S.TIERS[pick.tier].name, () => app.startGame(pick.tier, { mode: 'daily', idx: pick.idx, date: key })); return; }
     app.startGame(pick.tier, { mode: 'daily', idx: pick.idx, date: key });
   }
 

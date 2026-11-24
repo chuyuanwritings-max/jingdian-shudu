@@ -144,6 +144,8 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   };
   async function solve(tierName, shotPrefix, extra) {
     await page.waitForTimeout(600);
+    await skipCuts();
+    await page.waitForTimeout(300);
     for (let i = 0; i < 8 && (await ev(() => !!(window.__app.testHooks.teach && window.__app.testHooks.teach()))); i++) await tap('teach-next', 150);
     let b = await G.board();
     const empties = [];
@@ -306,7 +308,12 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await tap('hdr-back', 400);
   await tap('home-daily', 400);
   await shot('27_每日挑战_日历');
-  await tap('daily-go', 600);
+  await tap('daily-go', 1500);
+  // 每日开场运镜过场（F 运镜大图）：镜头摇过主页图、推到小樱，点一下跳过
+  ok(!!(await regionOf('cs-skip')), '每日挑战开场：运镜过场（镜头摇过主页图、推到小樱身上）');
+  await shot('27b_每日开场_运镜');
+  for (let i = 0; i < 30 && (await scene()) !== 'play'; i++) { await skipCuts(); await page.waitForTimeout(150); }
+  await page.waitForTimeout(300);
   ok((await ev(() => window.__app.testHooks.board().mode)) === 'daily', '每日挑战开局');
   const rd = await solve('每日', null);
   ok(rd === 'result', '每日挑战解完');

@@ -121,6 +121,65 @@ module.exports = function (app) {
     return cs;
   };
 
+  // ---------- 每日挑战开场：F 运镜大图（2026-11-24 Cc：「模仿《潜水员戴夫》……让镜头框在图片上的一个小范围运动，
+  // 来模拟 2D 式的镜头运动……每个游戏里都给我做一点」；总指挥：守住经典数独的安静）----------
+  // 镜头推近主页图，从左上慢慢摇到右下 → 停 → 小幅硬切推到小樱身上（不闪白、不震屏）→ 弹出日期和难度 → 淡黑进局。
+  // 第一次 3.6 秒，第二次起从硬切开始（约 1.3 秒）；点一下跳过
+  app.cutDaily = (label, onEnd) => {
+    const HA = require('./homeart.js'), SK = require('./sakura.js');
+    let waiting = true, done = false;
+    const go = (im) => { if (done) return; done = true; waiting = false; playDaily(HA, im, label, onEnd); };
+    const black = { cut: true, live: () => waiting, draw(ctx) { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, app.W, app.H); } };
+    app.push(black);
+    black.t0 = P.now() - 1000;
+    HA.whenReady(app.W, app.H, app.dpr, () => {
+      P.loadImage(SK.SPRITES.happy, (im) => {
+        const i = app.overlays.indexOf(black);
+        if (i >= 0) app.overlays.splice(i, 1);
+        go(im && im.width ? im : null);
+      });
+      setTimeout(() => { const i = app.overlays.indexOf(black); if (i >= 0) app.overlays.splice(i, 1); go(null); }, 1500);
+    }, 2500);
+  };
+  function playDaily(HA, sakuraImg, label, onEnd) {
+    const art = HA.get(app.W, app.H, app.dpr), L = art.lit, W = app.W, H = app.H;
+    const images = { home: art.canvas };
+    // 小樱站在主页图里亮的那一块右下边（她跟着大图一起被镜头带着走）
+    const sx = Math.min(0.8, L.x / W + 0.12), sy = Math.min(0.75, L.y / H + 0.09), sh = 0.13;
+    const layers = [{ id: 'home', img: 'home', fit: 'cover', z: 0 }];
+    if (sakuraImg) { images.sakura = sakuraImg; layers.push({ id: 'sakura', img: 'sakura', z: 1, pos: [sx, sy], anchor: [0.5, 0.5], h: sh }); }
+    // 镜头能摇的范围：推近 z 倍时，镜头中心最多偏离 (1 - 1/z) / 2
+    const lim = (z, v) => Math.max(-(1 - 1 / z) / 2, Math.min((1 - 1 / z) / 2, v));
+    const Z1 = 1.45, Z2 = 1.9;
+    const tl = {
+      id: 'daily', fps: 60, bg: '#000000', short: { from: 'punch' },
+      layers,
+      beats: [
+        { id: 'black', type: 'darkIn', dur: 24,
+          fx: [{ at: 0, fx: 'camera', to: Z1, dur: 0, pan: [lim(Z1, -0.2), lim(Z1, -0.2)], panDur: 0 },
+               { at: 0, fx: 'fade', from: 1, to: 0, dur: 24 }] },
+        { id: 'sweep', type: 'hold', dur: 110,
+          fx: [{ at: 0, fx: 'camera', pan: [lim(Z1, 0.2), lim(Z1, 0.16)], panDur: 110, panEase: 'inOut' },
+               { at: 18, fx: 'text', str: '今日挑战', in: 'fade', inDur: 16, pos: [0.5, 0.16], size: 26, color: '#1C2320', stroke: 'rgba(245,238,220,0.9)', strokeWidth: 4, dur: 88 },
+               { at: 0, fx: 'particles', preset: 'dust', n: 6, z: 4, dur: 110 }] },
+        { id: 'still', type: 'hold', dur: 16 },
+        // 硬切推到小樱：幅度小、不闪不震（经典数独要安静）
+        { id: 'punch', type: 'strike', dur: 4,
+          fx: [{ at: 0, fx: 'camera', pan: [lim(Z2, sx - 0.5), lim(Z2, sy - 0.5)], panDur: 0, steps: [1.75, Z2], stepDur: 2 },
+               { at: 0, sfx: 'soft' }] },
+        { id: 'pose', type: 'pose', dur: 62,
+          tracks: sakuraImg ? [{ layer: 'sakura', prop: 'scale', from: 1, to: 1.04, ease: 'breathe' }] : [],
+          fx: [{ at: 0, fx: 'camera', to: Z2 + 0.12, dur: 62, ease: 'linear' },
+               { at: 6, fx: 'text', str: label, in: 'pop', inDur: 10, pos: [0.5, 0.84], size: 24, strokeWidth: 5, dur: 56 },
+               { at: 6, sfx: 'bell1' }] },
+        { id: 'out', type: 'out', dur: 14, fx: [{ at: 0, fx: 'fade', from: 0, to: 1, dur: 14 }] },
+      ],
+    };
+    const seen = !!store.data.seen.cutDaily;
+    store.data.seen.cutDaily = true; store.save();
+    return app.playCut(tl, images, { onEnd, short: seen });
+  }
+
   // ---------- 开场：游戏名亮相（第一次打开，2.6 秒）----------
   // 黑 → 暗方块淡入（对准主页图里亮的那一块）→ 呼吸 → 「啪」亮成琥珀 + 白闪里硬切成主页图 → 镜头拉回 → 游戏名弹出
   app.cutOpen = (onEnd) => {
