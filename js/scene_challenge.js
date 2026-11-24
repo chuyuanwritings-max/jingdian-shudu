@@ -106,6 +106,7 @@ module.exports = function (app) {
   app.startChallenge = (guided) => {
     store.data.seen.tutorial = true;
     if (!store.data.level) store.data.level = guided ? 'new' : 'some';
+    app.shelveCurrent();
     const nb = Board.create({ mode: 'challenge', tier: ch.tier, idx: ch.idx, puzzle: ch.puzzle, guided });
     nb.challenge = { time: ch.time, mistakes: ch.mistakes };
     store.data.current = nb;

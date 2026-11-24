@@ -29,6 +29,7 @@ function create(opts) {
 function focusUse(b, k, show) {
   const f = b.focus;
   if (!f || show !== f.name || f.got.indexOf(k) >= 0) return false;
+  if (f.keys.length <= 9 && f.keys.indexOf(k) < 0) return false; // 分母是「非用不可的几处」，分子只数这几处（不会出现 6/4）
   f.got.push(k);
   return true;
 }
@@ -76,7 +77,7 @@ function input(b, k, v, noteMode, settings) {
   if (!right) {
     b.mistakes++;
     b.missed[k] = true;
-    if (settings && settings.mistakeLimit !== false && b.mistakes >= C.RULES.maxMistakes) b.lost = true;
+    if (settings && settings.mistakeLimit !== false && !b.guided && b.mistakes >= C.RULES.maxMistakes) b.lost = true; // 带练第一局不判输
     return { kind: 'wrong', lost: b.lost };
   }
   const cleared = [];

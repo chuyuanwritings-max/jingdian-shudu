@@ -512,6 +512,48 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     ok(!!(await ev(() => window.__layout.used['home.ver'])), '主页写着版本号');
   }
 
+  // ---------- 9e. Fable 试玩查出来的必修 bug：不再犯 ----------
+  {
+    const FB2 = require(path.join(__dirname, '..', 'js', 'focus_bank.js'));
+    // 1. 挑战局错 3 次「重新开始这一题」：还是这场挑战（以前做完会卡死）
+    await ev(() => { const s = window.__store.data; s.current = null; s.shelf = null; window.__app.overlays.length = 0; window.__app.startGame(1, { skipGate: true }); });
+    await page.waitForTimeout(500);
+    await ev(() => { const b = window.__app.testHooks.board(); b.mode = 'challenge'; b.challenge = { time: 250000, mistakes: 2 }; window.__app.restartGame(); });
+    await page.waitForTimeout(400);
+    const rb = await ev(() => { const b = window.__app.testHooks.board(); return { mode: b.mode, ch: !!b.challenge }; });
+    ok(rb.mode === 'challenge' && rb.ch, '挑战局「重新开始这一题」：还是这场挑战（做完能出两人对比，不卡死）');
+    // 2. 错满 3 次后退出再「继续」：重新弹「错了 3 次」，不是一盘死棋
+    await ev(() => { const s = window.__store.data; s.current = null; window.__app.overlays.length = 0; window.__app.startGame(1, { skipGate: true }); });
+    await page.waitForTimeout(500);
+    await ev(() => { const b = window.__app.testHooks.board(); b.mistakes = 3; b.lost = true; window.__store.data.current = b; window.__store.save(); window.__app.go('home'); });
+    await page.waitForTimeout(400);
+    await ev(() => window.__app.continueGame());
+    await page.waitForTimeout(900);
+    ok(!!(await regionOf('lost-revive')), '输了以后退出再「继续」：重新弹「错了 3 次」（复活 / 重新开始 / 换一题）');
+    await ev(() => { window.__app.overlays.length = 0; window.__store.data.current = null; });
+    // 3. 约好的对战：回首页大按钮是「回等候室」；到点人在首页也会被拉进去开局
+    const pz = FB2[1][0];
+    await ev((pz) => { const s = window.__store.data; s.duo = { tier: 1, idx: 1000, puzzle: pz, at: Math.floor(Date.now() / 1000) + 120, host: true }; window.__app.overlays.length = 0; window.__app.go('home'); }, pz);
+    await page.waitForTimeout(400);
+    await tap('home-main', 400);
+    ok((await scene()) === 'duo', '发完邀请回首页：大按钮「回等候室」点进去回到等候室');
+    await ev(() => { window.__store.data.duo.at = Math.floor(Date.now() / 1000) + 2; window.__app.go('home'); });
+    await page.waitForTimeout(3600);
+    const dg = await ev(() => { const b = window.__app.testHooks.board(); return { scene: window.__app.sceneName, mode: b && b.mode }; });
+    ok(dg.scene === 'play' && dg.mode === 'duo', '到点人在首页：自动拉进等候室开局');
+    // 4. 有一局没做完时接挑战：原来那局搁着，挑战完了还能继续
+    await ev(() => { const s = window.__store.data; s.current = null; s.shelf = null; window.__app.overlays.length = 0; window.__app.startGame(2, { skipGate: true }); });
+    await page.waitForTimeout(500);
+    const pz0 = await ev(() => { const b = window.__app.testHooks.board(); b.elapsed = 60000; window.__store.data.current = b; return b.puzzle; });
+    await ev(() => window.__app.shelveCurrent());
+    const sh = await ev(() => { const s = window.__store.data; s.current = null; window.__app.go('home'); return !!s.shelf; });
+    await page.waitForTimeout(300);
+    await tap('home-main', 500);
+    ok(sh && (await ev(() => window.__app.testHooks.board().puzzle)) === pz0, '接挑战时手上那局搁着，回首页「继续」接着做');
+    await ev(() => { window.__app.overlays.length = 0; window.__store.data.current = null; window.__store.data.shelf = null; window.__app.go('home'); });
+    await page.waitForTimeout(300);
+  }
+
   // ---------- 9b. 界面编辑模式：编辑器代码不进微信包；layout.json 改了游戏照着走 ----------
   {
     const root = path.join(__dirname, '..');

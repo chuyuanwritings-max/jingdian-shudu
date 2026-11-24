@@ -92,6 +92,13 @@ function frame() {
   last = t;
   app.now = t;
   if (app.scene && app.scene.update) app.scene.update(dt, t);
+  // 约好的对战到点了：人在首页 / 别的页就拉进等候室（等候室会自动开局）；在下别的局就提醒一句
+  const duo = store.data.duo;
+  if (duo && app.duoPulled !== duo.at && Date.now() >= duo.at * 1000 - 300 && Date.now() < duo.at * 1000 + 3000 && app.sceneName !== 'duo') {
+    app.duoPulled = duo.at;
+    if (app.sceneName === 'play' || app.sceneName === 'lesson') app.toast('约好的对战开始了！\n回首页点「回等候室」', 3000);
+    else { app.overlays.length = 0; app.go('duo'); }
+  }
   const live = app.dirty || t < app.animUntil || (app.scene && app.scene.live && app.scene.live(t)) || app.overlays.some((o) => o.live && o.live(t));
   if (live) render(t);
   P.nextFrame(frame);

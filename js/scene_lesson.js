@@ -212,10 +212,11 @@ module.exports = function (app) {
       const th = app.th, W = app.W;
       const st = stepNow();
       const L0 = T.LESSONS[lesson.index || 0];
-      app.header(ctx, lesson.quiz ? '小测 · 帮你选难度' : '第 ' + (lesson.index + 1) + ' 课 · ' + L0.name, () => app.go(lesson.returnTo === 'play' ? 'play' : 'lessons', lesson.returnTo === 'play' ? { board: store.data.current } : {}), (c, y, h) => {
+      app.header(ctx, lesson.quiz ? '小测 · 帮你选难度' : (T.BASIC.indexOf(L0) >= 0 ? '第 ' + (T.BASIC.indexOf(L0) + 1) + ' 课 · ' : '进阶 · ') + L0.name, () => app.go(lesson.returnTo === 'play' ? 'play' : 'lessons', lesson.returnTo === 'play' ? { board: store.data.current } : {}), (c, y, h) => {
         if (!lesson.firstRun) return;
         const x = app.headerRight - 64;
-        ui.button({ id: 'skip', x, y, w: 60, h, onTap: () => app.go('home') });
+        // 跳过：从朋友的挑战来的直接开始挑战，从对战邀请来的回等候室，其他回首页
+        ui.button({ id: 'skip', x, y, w: 60, h, onTap: () => { store.data.seen.tutorial = true; store.save(); if (lesson.then === 'challenge') app.startChallenge(true); else if (lesson.then === 'duo') app.go('duo'); else app.go('home'); } });
         ui.text(ctx, '跳过', x + 30, y + h / 2, 15, th.sub, 'center');
       });
       // 进度点

@@ -40,6 +40,16 @@ function logGame(b, w) {
   if (log.length > 300) log.splice(0, log.length - 300);
   uploadProgress();
 }
+// 连续天数（Fable 竞品对照：照 Wordle、多邻国的「连续 N 天」）：哪天赢过任意一局就算这天有。
+// 今天还没赢不算断，从昨天往前数
+function dayStreak() {
+  const won = {};
+  (data.log || []).forEach((e) => { if (e.w) won[e.d] = 1; });
+  let n = 0, d = new Date();
+  if (!won[dateKey(d)]) d = new Date(Date.now() - 864e5);
+  while (won[dateKey(d)]) { n++; d = new Date(d.getTime() - 864e5); }
+  return n;
+}
 // 进度表：最近 7 天玩了几局、赢了几局、最常玩哪一档
 function recent(days) {
   const from = dateKey(new Date(Date.now() - (days - 1) * 864e5));
@@ -58,6 +68,8 @@ function uploadProgress() {
 }
 
 function startGame(tier, mode) {
+  // 开新的普通局 / 每日：搁着的那局就算没做完（挑战、对战不动它）
+  if (data.shelf && mode !== 'duo' && mode !== 'challenge') { logGame(data.shelf, 0); data.shelf = null; }
   const cur = data.current;
   if (cur && !cur.done && cur.mode === 'normal') data.stats[cur.tier].streak = 0;
   if (cur && !cur.done) logGame(cur, 0); // 上一局没下完就换掉：算没做完
@@ -80,7 +92,8 @@ function recordWin(b) {
   } else if (b.mode === 'duo') {
     data.duos = (data.duos || 0) + 1;
   } else if (b.mode === 'daily') {
-    data.daily[b.date] = { time: b.elapsed, score: b.score };
+    const old = data.daily[b.date];
+    if (!old || b.score > old.score) data.daily[b.date] = { time: b.elapsed, score: b.score }; // 再玩一次：只留最好的一次
     P.uploadScore('daily_' + b.date.slice(0, 7), monthScore(b.date.slice(0, 7)));
   }
   // 做完的题记下自己的成绩：朋友发来同一题的成绩时，直接并排比（不用再做一遍）
@@ -88,6 +101,7 @@ function recordWin(b) {
   fin[b.puzzle] = { time: b.elapsed, mistakes: b.mistakes, score: b.score, tier: b.tier, at: Date.now() };
   const keys = Object.keys(fin);
   if (keys.length > 60) keys.sort((a, c) => fin[a].at - fin[c].at).slice(0, keys.length - 60).forEach((k) => delete fin[k]);
+  b.firstToday = !(data.log || []).some((e) => e.w && e.d === dateKey(new Date())); // 今天第一次赢：结算页报连续天数
   logGame(b, 1);
   data.current = null;
   save();
@@ -119,4 +133,4 @@ function dailyPick(key, bank) {
   return { tier, idx: half + (h % (list.length - half)) };
 }
 
-module.exports = { data, save, startGame, recordWin, recordLoss, dateKey, dailyPick, monthScore, recent, logGame };
+module.exports = { data, save, startGame, recordWin, recordLoss, dateKey, dailyPick, monthScore, recent, logGame, dayStreak };

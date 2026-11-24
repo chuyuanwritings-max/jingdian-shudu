@@ -48,14 +48,14 @@ module.exports = function (app) {
       y += 132;
       // ---- 我最常用的招（小樱每一步认出来的，做完一局记一次）----
       const tt = store.data.techTotal || {};
-      const top = Object.keys(tt).sort((a, c) => tt[c] - tt[a]).slice(0, 4);
+      const top = Object.keys(tt).sort((a, c) => tt[c] - tt[a]).slice(0, 3);
       ui.card(ctx, 16, y, W - 32, 58, 16, th);
       ui.text(ctx, '我最常用的招', 32, y + 18, 13, th.sub, 'left', 600);
-      ui.text(ctx, top.length ? top.map((n) => n + ' ' + tt[n]).join(' · ') : '做完一局，小樱就帮你记下来', 32, y + 40, 14, top.length ? th.text : th.faint, 'left', 600);
+      { const s1 = top.length ? top.map((n) => n + ' ' + tt[n]).join(' · ') : '做完一局，小樱就帮你记下来'; let fs = 14; ctx.font = ui.font(fs, 600); while (fs > 10 && ctx.measureText(s1).width > W - 64) { fs--; ctx.font = ui.font(fs, 600); } ui.text(ctx, s1, 32, y + 40, fs, top.length ? th.text : th.faint, 'left', 600); }
       y += 70;
       // ---- 每一档（普通局）：玩了几局、赢了几局 ----
       const tiers = S.TIERS.map((tr, i) => ({ name: tr.name, s: store.data.stats[i] })).filter((x) => x.s.played > 0);
-      const rowH = 30, th2 = 30 + Math.max(1, tiers.length) * rowH + 8;
+      const rowH = app.H < 700 ? 22 : 30, th2 = 30 + Math.max(1, tiers.length) * rowH + 8; // 矮屏压矮，好友栏才放得下
       ui.card(ctx, 16, y, W - 32, th2, 16, th);
       ui.text(ctx, '每一档（普通局）', 32, y + 18, 13, th.sub, 'left', 600);
       ui.text(ctx, '局数', W - 150, y + 18, 12, th.sub, 'right');
@@ -71,7 +71,7 @@ module.exports = function (app) {
       // ---- 好友最近在玩什么 ----
       ui.text(ctx, '好友最近在玩', 20, y, 15, th.text, 'left', 700);
       y += 14;
-      const box = { x: 16, y, w: W - 32, h: Math.max(120, app.bottom - 16 - y) };
+      const box = { x: 16, y, w: W - 32, h: Math.max(90, app.bottom - 16 - y) };
       ui.card(ctx, box.x, box.y, box.w, box.h, 16, th);
       const od = P.openDataCanvas();
       if (od) {

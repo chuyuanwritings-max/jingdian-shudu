@@ -20,6 +20,18 @@ module.exports = function (app) {
 
   // 大按钮写什么：有没做完的一局 → 继续；新手引导没走完 → 接着学；其他 → 新游戏（直接开推荐那一档）
   function mainAction() {
+    // 约好的对战还没开：回等候室（Fable 试玩：主人回一下首页就回不去，到点也不开）
+    const duo = store.data.duo;
+    if (duo && Date.now() < duo.at * 1000 + 10 * 60 * 1000) {
+      const left = duo.at * 1000 - Date.now();
+      app.animate(1100); // 倒计时每秒刷一下
+      return { title: '回等候室', sub: '约好的「' + S.TIERS[duo.tier].name + '」· ' + (left > 0 ? '还有 ' + Math.floor(left / 60000) + ':' + String(Math.floor(left / 1000) % 60).padStart(2, '0') : '已经开始了'), go: () => app.go('duo'), link: '' };
+    }
+    // 接挑战 / 对战时搁着的那一局：挑战做完了就接着它
+    if ((!store.data.current || store.data.current.done) && store.data.shelf) {
+      const sh = store.data.shelf;
+      return { title: '继续', sub: S.TIERS[sh.tier].name + ' · ' + app.fmt(sh.elapsed), go: () => app.continueGame(), link: '新游戏 ›' };
+    }
     const cur = store.data.current;
     if (cur && !cur.done) {
       const label = (cur.mode === 'daily' ? '每日挑战 · ' : cur.mode === 'challenge' ? '好友挑战 · ' : '') + S.TIERS[cur.tier].name + ' · ' + app.fmt(cur.elapsed);
@@ -160,6 +172,17 @@ module.exports = function (app) {
       const rd = LY.rect('home.daily'), ro = LY.rect('home.more');
       const tOn = ui.button({ id: 'home-daily', x: rd.x, y: rd.y, w: rd.w, h: rd.h, onTap: () => app.go('daily') });
       drawToday(ctx, rd.x + rd.w / 2, rd.y + 26, tOn);
+      // 连续天数（照 Wordle、多邻国）：「今日」图标右上角一个小火苗 + 天数
+      const ds = store.dayStreak();
+      if (ds >= 1) {
+        const fx0 = rd.x + rd.w / 2 + 8, fy0 = rd.y + 4, txt = String(ds);
+        ctx.font = ui.font(11, 800);
+        const pw = 20 + ctx.measureText(txt).width;
+        ui.fillRR(ctx, fx0, fy0, pw, 18, 9, '#E0A815');
+        ctx.fillStyle = '#FFFFFF'; const fx1 = fx0 + 9, fy1 = fy0 + 9, fs = 5;
+        ctx.beginPath(); ctx.moveTo(fx1, fy1 - fs * 1.2); ctx.bezierCurveTo(fx1 + fs, fy1 - fs * 0.2, fx1 + fs * 0.7, fy1 + fs, fx1, fy1 + fs); ctx.bezierCurveTo(fx1 - fs * 0.7, fy1 + fs, fx1 - fs, fy1 - fs * 0.2, fx1, fy1 - fs * 1.2); ctx.fill();
+        ui.text(ctx, txt, fx0 + 14 + (pw - 14) / 2, fy0 + 9.5, 11, '#FFFFFF', 'center', 800);
+      }
       const mOn = ui.button({ id: 'home-more', x: ro.x, y: ro.y, w: ro.w, h: ro.h, onTap: () => app.moreSheet() });
       drawMore(ctx, ro.x + ro.w / 2, ro.y + 26, mOn);
       // 对战、好友榜（Cc：「好友榜也应该放在主页上……对战模式……都应该放在主页上」）

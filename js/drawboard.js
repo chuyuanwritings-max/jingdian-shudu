@@ -158,10 +158,10 @@ function draw(ctx, th, geo, m, dpr) {
     ctx.fillStyle = Paper.rgba(th.gold, dk ? 0.3 : 0.28);
     for (const k of m.zone) { const r = cellRect(geo, k); ctx.fillRect(r.x, r.y, cs + 0.5, cs + 0.5); }
   }
-  // 教学：被「划掉」的行列（淡红带）
+  // 教学：被「划掉」的行列（淡灰带；不用红，红像填错了）
   if (m.rays) {
-    ctx.fillStyle = th.wrong;
-    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = th.text;
+    ctx.globalAlpha = 0.08;
     for (const ray of m.rays) {
       if (ray.dir === 'row') ctx.fillRect(geo.x, geo.y + S.ROW(ray.k) * cs, geo.size, cs);
       else ctx.fillRect(geo.x + S.COL(ray.k) * cs, geo.y, cs, geo.size);
@@ -216,7 +216,7 @@ function draw(ctx, th, geo, m, dpr) {
         if (digit === d && m.sameHighlight !== false) ui.fillRR(ctx, nx - cs / 7, ny - cs / 7, cs / 3.5, cs / 3.5, 3, HL.same);
         const struck = m.strikeNotes && m.strikeNotes[k] && m.strikeNotes[k] & S.bit(d);
         ui.text(ctx, String(d), nx + ox, ny + 0.5, ns, struck ? th.faint : digit === d ? th.text : th.note, 'center', digit === d ? 600 : 400);
-        if (struck) { ctx.strokeStyle = th.wrong; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(nx - ns * 0.45, ny + ns * 0.4); ctx.lineTo(nx + ns * 0.45, ny - ns * 0.4); ctx.stroke(); }
+        if (struck) { ctx.strokeStyle = th.sub; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(nx - ns * 0.45, ny + ns * 0.4); ctx.lineTo(nx + ns * 0.45, ny - ns * 0.4); ctx.stroke(); }
       }
     }
     ctx.globalAlpha = 1;
@@ -227,11 +227,11 @@ function draw(ctx, th, geo, m, dpr) {
     ui.rr(ctx, r.x + inset0 - 2, r.y + inset0 - 2, cs - inset0 * 2 + 4, cs - inset0 * 2 + 4, 8);
     ctx.strokeStyle = YELLOW_EDGE; ctx.lineWidth = 3; ctx.stroke();
   }
-  // 教学：从挡住它的那个数拉一条红线穿过整排 / 整列，起点一个圆点
+  // 教学：从挡住它的那个数拉一条金线穿过整排 / 整列，起点一个圆圈（和局内的光一个颜色）
   if (m.rays) {
     ctx.save();
-    ctx.strokeStyle = Paper.rgba(th.wrong, 0.7);
-    ctx.fillStyle = Paper.rgba(th.wrong, 0.85);
+    ctx.strokeStyle = Paper.rgba('#E0A815', 0.85);
+    ctx.fillStyle = Paper.rgba('#E0A815', 0.85);
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 5]);
     for (const ray of m.rays) {

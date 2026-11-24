@@ -60,7 +60,9 @@ module.exports = function (app) {
         ui.pill(ctx, th, 'res-home', rHome.x, rHome.y, rHome.w, rHome.h, '回首页', () => app.go('home'), 'card');
       } else {
         ui.text(ctx, '完成！', hx, hy, Math.round(28 * hk), th.text, 'center', 700);
-        ui.text(ctx, (b.mode === 'daily' ? '每日挑战 · ' + b.date.slice(5).replace('-', '月') + '日 · ' : b.mode === 'duo' ? '约好一起做 · ' : '') + tierName, hx, rh.y + rh.h * 0.77, Math.round(14 * hk), th.sub, 'center');
+        // 今天第一次赢：报连续天数（照 Wordle、多邻国）
+        const ds = b.firstToday ? store.dayStreak() : 0;
+        ui.text(ctx, (b.mode === 'daily' ? '每日挑战 · ' + b.date.slice(5).replace('-', '月') + '日 · ' : b.mode === 'duo' ? '约好一起做 · ' : '') + tierName + (ds >= 2 ? '  ·  连续 ' + ds + ' 天！' : ds === 1 ? '  ·  今天的第一局' : ''), hx, rh.y + rh.h * 0.77, Math.round(14 * hk), ds ? th.gold : th.sub, 'center', ds ? 700 : 400);
         // 分数滚上去
         const shown = res.fromCut ? b.score : Math.round(b.score * ui.ease.out(p));
         ui.text(ctx, String(shown), rs.x + rs.w / 2, rs.y + rs.h * 0.33, Math.round(44 * sk), th.primary, 'center', 700);
@@ -69,7 +71,9 @@ module.exports = function (app) {
         const st = store.data.stats[b.tier];
         const rows = b.mode === 'daily'
           ? [['用时', app.fmt(b.elapsed)], ['错误', String(b.mistakes)], ['本月完成', Object.keys(store.data.daily).filter((k) => k.slice(0, 7) === b.date.slice(0, 7)).length + ' 天']]
-          : [['用时', app.fmt(b.elapsed) + (b.newBest ? '  新纪录' : '')], ['本档最好', app.fmt(st.best)], ['错误', String(b.mistakes)], ['连胜', st.streak + ' 局']];
+          : b.mode === 'normal'
+            ? [['用时', app.fmt(b.elapsed) + (b.newBest ? '  新纪录' : '')], ['本档最好', app.fmt(st.best)], ['错误', String(b.mistakes)], ['连胜', st.streak + ' 局']]
+            : [['用时', app.fmt(b.elapsed)], ['错误', String(b.mistakes)]]; // 对战 / 挑战不算进本档最好、连胜
         // 本局一招：第一行写用上了几处，后面是累计
         // 这局用了哪些招（小樱认出来的），最多的排前面
         if (b.techs) {
@@ -85,7 +89,11 @@ module.exports = function (app) {
         rows.forEach((r, i) => {
           const ry = rc.y + 5 + i * rowH + rowH / 2;
           ui.text(ctx, r[0], rc.x + 20, ry, Math.round(15 * ck), th.sub);
-          ui.text(ctx, r[1], rc.x + rc.w - 20, ry, Math.round(16 * ck), r[1].indexOf('新纪录') >= 0 ? th.gold : th.text, 'right', 600);
+          // 右边太长就缩字，不和左边叠在一起（Fable 试玩：「这局用的招」那行字叠字）
+          ctx.font = ui.font(15 * ck, 400); const lw = ctx.measureText(r[0]).width;
+          let fs = Math.round(16 * ck); ctx.font = ui.font(fs, 600);
+          while (fs > 10 && ctx.measureText(r[1]).width > rc.w - 52 - lw) { fs--; ctx.font = ui.font(fs, 600); }
+          ui.text(ctx, r[1], rc.x + rc.w - 20, ry, fs, r[1].indexOf('新纪录') >= 0 ? th.gold : th.text, 'right', 600);
         });
         // 按钮：发给朋友挑战这一题（主按钮）；再来一局 / 回首页并排
         if (!app.scenes.result.ready()) { app.animate(400); return; } // 按钮晚 20 帧

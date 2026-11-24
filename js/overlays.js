@@ -76,7 +76,7 @@ module.exports = function (app) {
     ['mistakeLimit', '错 3 次算输', '关掉就不限次数'],
     ['autoNotes', '自动擦笔记', '填对一个数，同行同列同宫的这个笔记擦掉'],
     ['sameHighlight', '高亮相同数字', ''],
-    ['chainLight', '填对时显示用了哪招', '格子上飘出招名，一道光画叉走一遍怎么排除的'],
+    ['chainLight', '填对时显示用了哪招', '飘出招名，一道光走一遍，排除的格子压灰'],
     ['reduceMotion', '简洁动效', '过场只播短的，不震屏、不闪'],
     ['showTimer', '显示计时', ''],
     ['sound', '声音', ''],
@@ -110,7 +110,7 @@ module.exports = function (app) {
           },
         });
         ui.text(ctx, label, 24, ry + (sub ? rowH * 0.34 : rowH / 2), 16, th.text, 'left', 500);
-        if (sub) ui.text(ctx, sub, 24, ry + rowH * 0.72, 12, th.sub);
+        if (sub) { let fs = 12; ctx.font = ui.font(fs, 400); while (fs > 9 && ctx.measureText(sub).width > app.W - 120) { fs--; ctx.font = ui.font(fs, 400); } ui.text(ctx, sub, 24, ry + rowH * 0.72, fs, th.sub); } // 说明不伸到开关底下
         toggle(ctx, app.W - 72, ry + rowH / 2 - 14, set[key] !== false, th);
       });
       // 主题（颜色 + 质地一整套，单独一页，能实时预览）
@@ -164,7 +164,8 @@ module.exports = function (app) {
       const on = ui.button({ id: 'lost-revive', x: bx, y: m.y + 108, w: bw, h: 52, onTap: () => { app.pop(); handlers.revive(); } });
       ui.fillRR(ctx, bx, m.y + 108, bw, 52, 16, th.primary);
       if (on) ui.fillRR(ctx, bx, m.y + 108, bw, 52, 16, 'rgba(0,0,0,0.1)');
-      ui.icons.video(ctx, bx + 40, m.y + 134, 24, 'rgba(255,255,255,0.35)');
+      ctx.font = ui.font(17, 600); const lw2 = ctx.measureText('看广告，再给一次机会').width;
+      ui.icons.video(ctx, app.W / 2 - lw2 / 2 - 4, m.y + 134, 22, 'rgba(255,255,255,0.6)');
       ui.text(ctx, '看广告，再给一次机会', app.W / 2 + 12, m.y + 134, 17, th.primaryText, 'center', 600);
       ui.pill(ctx, th, 'lost-restart', bx, m.y + 172, bw, 48, '重新开始这一题', () => { app.pop(); handlers.restart(); }, 'soft');
       ui.pill(ctx, th, 'lost-new', bx, m.y + 230, bw, 48, '换一题', () => { app.pop(); handlers.fresh(); }, 'card');

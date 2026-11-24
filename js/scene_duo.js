@@ -92,6 +92,7 @@ module.exports = function (app) {
     if (!duo) return;
     store.data.seen.tutorial = true;
     if (!store.data.level) store.data.level = 'some';
+    app.shelveCurrent();
     store.startGame(duo.tier, 'duo');
     const nb = Board.create({ mode: 'duo', tier: duo.tier, idx: duo.idx, puzzle: duo.puzzle });
     nb.duo = { at: duo.at };
