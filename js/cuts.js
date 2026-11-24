@@ -176,10 +176,10 @@ module.exports = function (app) {
   app.cutLesson = (index, name, opts) => {
     const th = app.th, H = app.H, W = app.W;
     const pal = th.tileB ? { body: th.tileB[0], edge: th.tileB[1], ink: th.tileB[2] } : AMBER;
-    const done = require('./tutorial.js').LESSONS.map((L) => !!store.data.lessons[L.id]);
+    const done = require('./tutorial.js').BASIC.map((L) => !!store.data.lessons[L.id]); // 基础 3 课 3 个点
     const before = done.slice(); before[index] = false;
     const sz = Math.round(Math.min(W * 0.42, 170));
-    const images = { tile: tileImg(sz, opts && opts.all ? GOLD : pal, { text: opts && opts.all ? '七招' : String(index + 1) }), dotsA: dotsImg(before, -1), dotsB: dotsImg(done, index) };
+    const images = { tile: tileImg(sz, opts && opts.all ? GOLD : pal, { text: opts && opts.all ? '全会' : String(index + 1) }), dotsA: dotsImg(before, -1), dotsB: dotsImg(done, index) };
     const hh = (images.tile.height / app.dpr) / H;
     const tl = {
       id: 'lesson', fps: 60, bg: '#0E0E0E', vignette: DARK, short: { from: 'strike', dur: { pose: 24 } },

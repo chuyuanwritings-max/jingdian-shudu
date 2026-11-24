@@ -206,7 +206,7 @@ module.exports = { dropWrong, dropAllWrong, focusUse, create, input, erase, undo
 __def("js/config.js", function (module, exports, require) {
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.11';
+const VERSION = '0.12';
 
 // 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
 // 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
@@ -508,10 +508,10 @@ module.exports = function (app) {
   app.cutLesson = (index, name, opts) => {
     const th = app.th, H = app.H, W = app.W;
     const pal = th.tileB ? { body: th.tileB[0], edge: th.tileB[1], ink: th.tileB[2] } : AMBER;
-    const done = require('./tutorial.js').LESSONS.map((L) => !!store.data.lessons[L.id]);
+    const done = require('./tutorial.js').BASIC.map((L) => !!store.data.lessons[L.id]); // 基础 3 课 3 个点
     const before = done.slice(); before[index] = false;
     const sz = Math.round(Math.min(W * 0.42, 170));
-    const images = { tile: tileImg(sz, opts && opts.all ? GOLD : pal, { text: opts && opts.all ? '七招' : String(index + 1) }), dotsA: dotsImg(before, -1), dotsB: dotsImg(done, index) };
+    const images = { tile: tileImg(sz, opts && opts.all ? GOLD : pal, { text: opts && opts.all ? '全会' : String(index + 1) }), dotsA: dotsImg(before, -1), dotsB: dotsImg(done, index) };
     const hh = (images.tile.height / app.dpr) / H;
     const tl = {
       id: 'lesson', fps: 60, bg: '#0E0E0E', vignette: DARK, short: { from: 'strike', dur: { pose: 24 } },
@@ -3029,9 +3029,9 @@ module.exports = function (app) {
     onBackdrop: () => app.pop(),
     draw(ctx, t, p) {
       const th = app.th;
-      const learned = T.LESSONS.filter((L) => store.data.lessons[L.id]).length;
+      const learned = T.BASIC.filter((L) => store.data.lessons[L.id]).length;
       const rows = [
-        ['lessons', '教学', '已学 ' + learned + ' / ' + T.LESSONS.length, () => app.go('lessons')],
+        ['lessons', '教学', '基础 ' + learned + ' / ' + T.BASIC.length, () => app.go('lessons')],
         ['progress', '进度表', '最近玩什么、胜率', () => app.go('progress')],
         ['look', '主题', th.name, () => app.go('look', { back: { name: 'home' } })],
         ['stats', '战绩', '', () => app.go('stats')],
@@ -3183,25 +3183,31 @@ module.exports = function (app) {
       const th = app.th, W = app.W;
       app.header(ctx, '教学', () => app.go('home'));
       let y = app.headerY + app.headerH + 12;
-      ui.text(ctx, '前五课学会「简单」，往上每一档再学一招', 24, y + 10, 14, th.sub);
-      y += 30;
-      const h = Math.min(64, Math.max(54, (app.bottom - y - 90) / T.LESSONS.length - 8));
-      T.LESSONS.forEach((L, i) => {
-        const done = !!store.data.lessons[L.id];
-        const on = ui.button({ id: 'lesson-' + i, x: 16, y, w: W - 32, h, onTap: () => app.go('lesson', { index: i }) });
+      // 基础招：大卡片、编号；进阶招：最下面一小栏，写明不用学
+      const row = (L, n, h, small) => {
+        const done = !!store.data.lessons[L.id], i = T.LESSONS.indexOf(L);
+        const on = ui.button({ id: 'lesson-' + L.id, x: 16, y, w: W - 32, h, onTap: () => app.go('lesson', { index: i }) });
         ui.card(ctx, 16, y, W - 32, h, 16, th);
         if (on) ui.fillRR(ctx, 16, y, W - 32, h, 16, (th.pageDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'));
-        ctx.beginPath(); ctx.arc(52, y + h / 2, 18, 0, Math.PI * 2); ctx.fillStyle = done ? th.ok : th.soft; ctx.fill();
-        if (done) ui.icons.check(ctx, 52, y + h / 2, 20, '#FFFFFF');
-        else ui.text(ctx, String(i + 1), 52, y + h / 2, 16, th.primary, 'center', 700);
-        ui.text(ctx, L.name, 84, y + h / 2 - 11, 16, th.text, 'left', 600);
-        ui.text(ctx, L.sub, 84, y + h / 2 + 11, 12, th.sub);
+        const r = small ? 14 : 18;
+        ctx.beginPath(); ctx.arc(52, y + h / 2, r, 0, Math.PI * 2); ctx.fillStyle = done ? th.ok : th.soft; ctx.fill();
+        if (done) ui.icons.check(ctx, 52, y + h / 2, small ? 16 : 20, '#FFFFFF');
+        else ui.text(ctx, small ? '+' : String(n), 52, y + h / 2, small ? 15 : 16, th.primary, 'center', 700);
+        ui.text(ctx, L.name, 84, y + h / 2 - (small ? 9 : 11), small ? 15 : 16, small ? th.sub : th.text, 'left', 600);
+        ui.text(ctx, L.sub, 84, y + h / 2 + (small ? 10 : 11), 12, th.sub);
         ui.icons.chevron(ctx, W - 38, y + h / 2, 18, th.faint);
         y += h + 8;
-      });
-      const all = T.LESSONS.slice(0, 5).every((L) => store.data.lessons[L.id]);
-      y += 8;
+      };
+      ui.text(ctx, '基础招 · 学会这 3 课就能玩', 24, y + 10, 15, th.text, 'left', 700);
+      y += 30;
+      T.BASIC.forEach((L, n) => row(L, n + 1, 64));
+      const all = T.BASIC.every((L) => store.data.lessons[L.id]);
+      y += 4;
       ui.pill(ctx, th, 'lessons-play', 16, y, W - 32, 52, all ? '学完了，去玩一局「简单」' : '直接玩一局「入门」', () => app.startGame(all ? 1 : 0), all ? 'primary' : 'soft');
+      y += 52 + 26;
+      ui.text(ctx, '进阶招 · 不用学，想看再点', 24, y + 10, 13, th.sub, 'left', 600);
+      y += 26;
+      T.ADV.forEach((L) => row(L, 0, 52, true));
     },
   };
 
@@ -3285,8 +3291,9 @@ module.exports = function (app) {
     const L0 = T.LESSONS[lesson.index];
     const relearn = !!store.data.lessons[L0.id];
     store.data.lessons[L0.id] = true;
+    T.LESSONS.forEach((x) => { if (x.in === L0.id) store.data.lessons[x.id] = true; });
     const seen = store.data.seen;
-    const allNow = T.LESSONS.every((x) => store.data.lessons[x.id]);
+    const allNow = T.BASIC.every((x) => store.data.lessons[x.id]);
     store.save();
     if (lesson.then && lesson.then.tier !== undefined) {
       // 升档学新招：第一次升档、升到大师播完整版，其余短版
@@ -3294,22 +3301,23 @@ module.exports = function (app) {
       const full = !seen.cutTierAny || tier === 5;
       seen.cutTierAny = true; store.save();
       app.cutTier(tier, L0.name, { short: !full, onEnd: finished });
-    } else if (allNow && !seen.allSeven) {
+    } else if (allNow && !seen.allSeven && L0.group === 'basic') {
       // 七招全会：一辈子一次
       seen.allSeven = true; store.save();
-      app.cutLesson(lesson.index, L0.name, { all: true, onEnd: finished });
-    } else if (relearn) {
-      app.sound('correct');
+      app.cutLesson(T.BASIC.indexOf(L0), L0.name, { all: true, onEnd: finished });
+    } else if (relearn || L0.group !== 'basic') {
+      app.sound('correct'); // 重学、进阶招：不播过场
       finished(); // 重学一门学过的：不播
     } else {
       const full = lesson.index === 0 && !seen.cutLesson0;
       if (lesson.index === 0) { seen.cutLesson0 = true; store.save(); }
-      app.cutLesson(lesson.index, L0.name, { short: !full, onEnd: finished });
+      app.cutLesson(T.BASIC.indexOf(L0), L0.name, { short: !full, onEnd: finished });
     }
   }
   function finished() {
     const i = lesson.index, ret = lesson.returnTo;
-    const nextL = T.LESSONS[i + 1];
+    // 下一课：只在基础招里往下走；进阶招学完不接下一课
+    const bi = T.BASIC.indexOf(T.LESSONS[i]), nextL = bi >= 0 ? T.BASIC[bi + 1] : null;
     app.push({
       draw(ctx, t, p) {
         const th = app.th;
@@ -3330,7 +3338,7 @@ module.exports = function (app) {
         } else if (ret === 'play') {
           ui.pill(ctx, th, 'lf-back', bx, m.y + 140, bw, 50, '回到这一局', () => { app.pop(); app.continueGame(); }, 'primary');
         } else if (nextL) {
-          ui.pill(ctx, th, 'lf-next', bx, m.y + 140, bw, 50, '下一课：' + nextL.name, () => { app.pop(); app.go('lesson', { index: i + 1, firstRun: lesson.firstRun }); }, 'primary');
+          ui.pill(ctx, th, 'lf-next', bx, m.y + 140, bw, 50, '下一课：' + nextL.name, () => { app.pop(); app.go('lesson', { index: T.LESSONS.indexOf(nextL), firstRun: lesson.firstRun }); }, 'primary');
         } else {
           ui.pill(ctx, th, 'lf-play', bx, m.y + 140, bw, 50, '全学完了！玩一局「简单」', () => { app.pop(); app.startGame(1); }, 'primary');
         }
@@ -3360,6 +3368,8 @@ module.exports = function (app) {
     enter(args) {
       let index = args.index;
       if (args.id) index = T.LESSONS.findIndex((x) => x.id === args.id);
+      // 并进别的课的（最后一格、笔记）：直接去那一课
+      if (index >= 0 && T.LESSONS[index] && T.LESSONS[index].in) index = T.LESSONS.findIndex((x) => x.id === T.LESSONS[index].in);
       // args.quiz：「会一点」的两道小测；args.then：学完去哪（'guided' 带练局 / { tier } 开这一档）
       const steps = args.quiz ? T.quizSteps() : T.LESSONS[index].build();
       lesson = { index, steps, si: 0, returnTo: args.returnTo, firstRun: args.firstRun, noteMode: false, quiz: !!args.quiz, then: args.then, totalMisses: 0 };
@@ -4794,9 +4804,14 @@ module.exports = function (app) {
       else if (b.focus && !b.focusShown && !b.guided) {
         b.focusShown = true;
         const f = b.focus, seen = store.data.seen.demo || (store.data.seen.demo = {});
-        if (!seen[f.lesson]) {
+        const basic = (T.LESSONS.find((x) => x.id === f.lesson) || {}).group === 'basic';
+        if (!seen[f.lesson] && basic) {
           seen[f.lesson] = true; store.save();
           setTimeout(() => { if (app.scene === app.scenes.play && !startDemo()) SK.say('这盘练「' + f.name + '」\n我陪你！', 'happy', 2600); }, 450);
+        } else if (!basic && !seen[f.lesson]) {
+          // 进阶招不用学（Cc）：不自动演示，只说一句，想看点小条
+          seen[f.lesson] = true; store.save();
+          setTimeout(() => SK.say('这盘会用到「' + f.name + '」\n想看演示就点上面的小条～', 'happy', 3000), 450);
         } else setTimeout(() => SK.say('这盘练「' + f.name + '」' + (f.keys.length > 9 ? '\n全靠它啦' : '\n有 ' + f.keys.length + ' 处要用它'), 'happy', 2600), 450);
       } else if (!b.guided && b.elapsed < 1000) setTimeout(() => SK.say('加油！我在这儿看着～', 'happy', 2000), 450);
     },
@@ -6043,17 +6058,24 @@ function lessonPair() {
   ];
 }
 
+// 技能分两栏（2026-11-24 Cc：「分几个基础技能以及几个进阶技能，简单明了一点……就要最简单、最基础的几个新手技能」
+// 「进阶技能跟高级技能不用学。基础技能是可以点进去学的，或者是新手第一关可以进去学的」）。
+// 题库统计：排除法 + 最后一格占每一档九成步数，唯一候选从中等起大多数盘要用 → 基础 = 规则（含最后一格）、排除法、唯一候选（含笔记）；
+// 进阶 = 区块排除、数对：不弹窗、不自动演示，教学页最下面想看再点。高级（X-Wing 等）以后再说。
+// in：并进哪一课（学完那一课一起打勾；点到它直接去那一课）
 const LESSONS = [
-  { id: 'rules', name: '规则', sub: '每行、每列、每宫 1–9 各一个', build: lessonRules },
-  { id: 'last', name: '最后一格', sub: '只剩一个空，缺哪个数？', build: lessonLastCell },
-  { id: 'hatch', name: '排除法', sub: '别处的数把行和列划掉', build: lessonHatch },
-  { id: 'naked', name: '唯一候选', sub: '这一格只剩一种可能', build: lessonNaked },
-  { id: 'notes', name: '笔记', sub: '记下可能的数，会自动擦', build: lessonNotes },
-  { id: 'pointing', name: '区块排除', sub: '中等要用：一宫里的数挤在一排', build: lessonPointing, tier: 2 },
-  { id: 'pair', name: '数对', sub: '困难要用：两格包了两个数', build: lessonPair, tier: 3 },
+  { id: 'rules', name: '规则', sub: '每行、每列、每宫 1–9 各一个', build: () => lessonRules().concat(lessonLastCell()), group: 'basic' },
+  { id: 'last', name: '最后一格', sub: '只剩一个空，缺哪个数？', build: lessonLastCell, in: 'rules' },
+  { id: 'hatch', name: '排除法', sub: '别处的数把行和列划掉', build: lessonHatch, group: 'basic' },
+  { id: 'naked', name: '唯一候选', sub: '这一格只剩一种可能（顺便学笔记）', build: () => lessonNaked().concat(lessonNotes()), group: 'basic' },
+  { id: 'notes', name: '笔记', sub: '记下可能的数，会自动擦', build: lessonNotes, in: 'naked' },
+  { id: 'pointing', name: '区块排除', sub: '中等会用到：一宫里的数挤在一排', build: lessonPointing, group: 'adv' },
+  { id: 'pair', name: '数对', sub: '困难会用到：两格包了两个数', build: lessonPair, group: 'adv' },
 ];
-// 每一档第一次玩之前要先会的那一课（「每升一档，先学一招」）
-const TIER_LESSON = { 2: 'pointing', 3: 'pair' };
+const BASIC = LESSONS.filter((L) => L.group === 'basic');
+const ADV = LESSONS.filter((L) => L.group === 'adv');
+// 进阶招不用学：不再在第一次玩中等、困难前弹「先学一招」
+const TIER_LESSON = {};
 // 提示里用到的招 → 去哪一课学
 const TECH_LESSON = { fullHouse: 'last', hiddenBox: 'hatch', hiddenLine: 'hatch', nakedSingle: 'naked', pointing: 'pointing', claiming: 'pointing', nakedPair: 'pair', hiddenPair: 'pair' };
 
@@ -6067,7 +6089,7 @@ function quizSteps() {
   ];
 }
 
-module.exports = { SOL, LESSONS, TECH_LESSON, TIER_LESSON, quizSteps };
+module.exports = { SOL, LESSONS, BASIC, ADV, TECH_LESSON, TIER_LESSON, quizSteps };
 
 });
 __def("js/ui.js", function (module, exports, require) {

@@ -875,9 +875,14 @@ module.exports = function (app) {
       else if (b.focus && !b.focusShown && !b.guided) {
         b.focusShown = true;
         const f = b.focus, seen = store.data.seen.demo || (store.data.seen.demo = {});
-        if (!seen[f.lesson]) {
+        const basic = (T.LESSONS.find((x) => x.id === f.lesson) || {}).group === 'basic';
+        if (!seen[f.lesson] && basic) {
           seen[f.lesson] = true; store.save();
           setTimeout(() => { if (app.scene === app.scenes.play && !startDemo()) SK.say('这盘练「' + f.name + '」\n我陪你！', 'happy', 2600); }, 450);
+        } else if (!basic && !seen[f.lesson]) {
+          // 进阶招不用学（Cc）：不自动演示，只说一句，想看点小条
+          seen[f.lesson] = true; store.save();
+          setTimeout(() => SK.say('这盘会用到「' + f.name + '」\n想看演示就点上面的小条～', 'happy', 3000), 450);
         } else setTimeout(() => SK.say('这盘练「' + f.name + '」' + (f.keys.length > 9 ? '\n全靠它啦' : '\n有 ' + f.keys.length + ' 处要用它'), 'happy', 2600), 450);
       } else if (!b.guided && b.elapsed < 1000) setTimeout(() => SK.say('加油！我在这儿看着～', 'happy', 2000), 450);
     },

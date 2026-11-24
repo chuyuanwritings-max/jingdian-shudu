@@ -38,9 +38,9 @@ module.exports = function (app) {
     onBackdrop: () => app.pop(),
     draw(ctx, t, p) {
       const th = app.th;
-      const learned = T.LESSONS.filter((L) => store.data.lessons[L.id]).length;
+      const learned = T.BASIC.filter((L) => store.data.lessons[L.id]).length;
       const rows = [
-        ['lessons', '教学', '已学 ' + learned + ' / ' + T.LESSONS.length, () => app.go('lessons')],
+        ['lessons', '教学', '基础 ' + learned + ' / ' + T.BASIC.length, () => app.go('lessons')],
         ['progress', '进度表', '最近玩什么、胜率', () => app.go('progress')],
         ['look', '主题', th.name, () => app.go('look', { back: { name: 'home' } })],
         ['stats', '战绩', '', () => app.go('stats')],

@@ -226,17 +226,24 @@ function lessonPair() {
   ];
 }
 
+// 技能分两栏（2026-11-24 Cc：「分几个基础技能以及几个进阶技能，简单明了一点……就要最简单、最基础的几个新手技能」
+// 「进阶技能跟高级技能不用学。基础技能是可以点进去学的，或者是新手第一关可以进去学的」）。
+// 题库统计：排除法 + 最后一格占每一档九成步数，唯一候选从中等起大多数盘要用 → 基础 = 规则（含最后一格）、排除法、唯一候选（含笔记）；
+// 进阶 = 区块排除、数对：不弹窗、不自动演示，教学页最下面想看再点。高级（X-Wing 等）以后再说。
+// in：并进哪一课（学完那一课一起打勾；点到它直接去那一课）
 const LESSONS = [
-  { id: 'rules', name: '规则', sub: '每行、每列、每宫 1–9 各一个', build: lessonRules },
-  { id: 'last', name: '最后一格', sub: '只剩一个空，缺哪个数？', build: lessonLastCell },
-  { id: 'hatch', name: '排除法', sub: '别处的数把行和列划掉', build: lessonHatch },
-  { id: 'naked', name: '唯一候选', sub: '这一格只剩一种可能', build: lessonNaked },
-  { id: 'notes', name: '笔记', sub: '记下可能的数，会自动擦', build: lessonNotes },
-  { id: 'pointing', name: '区块排除', sub: '中等要用：一宫里的数挤在一排', build: lessonPointing, tier: 2 },
-  { id: 'pair', name: '数对', sub: '困难要用：两格包了两个数', build: lessonPair, tier: 3 },
+  { id: 'rules', name: '规则', sub: '每行、每列、每宫 1–9 各一个', build: () => lessonRules().concat(lessonLastCell()), group: 'basic' },
+  { id: 'last', name: '最后一格', sub: '只剩一个空，缺哪个数？', build: lessonLastCell, in: 'rules' },
+  { id: 'hatch', name: '排除法', sub: '别处的数把行和列划掉', build: lessonHatch, group: 'basic' },
+  { id: 'naked', name: '唯一候选', sub: '这一格只剩一种可能（顺便学笔记）', build: () => lessonNaked().concat(lessonNotes()), group: 'basic' },
+  { id: 'notes', name: '笔记', sub: '记下可能的数，会自动擦', build: lessonNotes, in: 'naked' },
+  { id: 'pointing', name: '区块排除', sub: '中等会用到：一宫里的数挤在一排', build: lessonPointing, group: 'adv' },
+  { id: 'pair', name: '数对', sub: '困难会用到：两格包了两个数', build: lessonPair, group: 'adv' },
 ];
-// 每一档第一次玩之前要先会的那一课（「每升一档，先学一招」）
-const TIER_LESSON = { 2: 'pointing', 3: 'pair' };
+const BASIC = LESSONS.filter((L) => L.group === 'basic');
+const ADV = LESSONS.filter((L) => L.group === 'adv');
+// 进阶招不用学：不再在第一次玩中等、困难前弹「先学一招」
+const TIER_LESSON = {};
 // 提示里用到的招 → 去哪一课学
 const TECH_LESSON = { fullHouse: 'last', hiddenBox: 'hatch', hiddenLine: 'hatch', nakedSingle: 'naked', pointing: 'pointing', claiming: 'pointing', nakedPair: 'pair', hiddenPair: 'pair' };
 
@@ -250,4 +257,4 @@ function quizSteps() {
   ];
 }
 
-module.exports = { SOL, LESSONS, TECH_LESSON, TIER_LESSON, quizSteps };
+module.exports = { SOL, LESSONS, BASIC, ADV, TECH_LESSON, TIER_LESSON, quizSteps };

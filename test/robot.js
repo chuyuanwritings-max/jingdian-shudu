@@ -97,16 +97,19 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   // ---------- 2. 其余六课（含新加的区块排除、数对）----------
   await more('lessons');
   await shot('07_教学目录');
-  const LESSON_SHOTS = { 2: { '1,end': '08_排除法_红线讲因果' }, 3: { '1,end': '09_唯一候选' }, 4: { '1,end': '10_笔记_自动擦掉' }, 5: { '1,end': '11_区块排除', '2,0': '12_区块排除_练习' }, 6: { '1,end': '13_数对', '2,0': '14_数对_练习' } };
-  for (let li = 1; li < 7; li++) {
-    await tap('lesson-' + li, 400);
-    await runLesson(LESSON_SHOTS[li]);
-    const id = ['rules', 'last', 'hatch', 'naked', 'notes', 'pointing', 'pair'][li];
-    ok(await ev((x) => !!window.__store.data.lessons[x], id), '第 ' + (li + 1) + ' 课学完（' + id + '）');
+  // 技能分两栏：基础 3 课（规则含最后一格、排除法、唯一候选含笔记）+ 进阶 2 课（不用学，想看再点）
+  ok(await ev(() => !!window.__store.data.lessons.last), '规则一课里带了「最后一格」，学完一起打勾');
+  ok(!!(await regionOf('lesson-hatch')) && !!(await regionOf('lesson-pointing')) && !(await regionOf('lesson-last')) && !(await regionOf('lesson-notes')), '教学目录：基础 3 课 + 进阶 2 课（最后一格、笔记并进去了）');
+  const LESSON_SHOTS = { hatch: { '1,end': '08_排除法_红线讲因果' }, naked: { '1,end': '09_唯一候选' }, pointing: { '1,end': '11_区块排除', '2,0': '12_区块排除_练习' }, pair: { '1,end': '13_数对', '2,0': '14_数对_练习' } };
+  for (const id of ['hatch', 'naked', 'pointing', 'pair']) {
+    await tap('lesson-' + id, 400);
+    await runLesson(LESSON_SHOTS[id]);
+    ok(await ev((x) => !!window.__store.data.lessons[x], id), '「' + id + '」学完');
     await tap('lf-list', 400);
   }
+  ok(await ev(() => !!window.__store.data.lessons.notes), '唯一候选一课里带了「笔记」，学完一起打勾');
   ok((await scene()) === 'lessons', '学完回到教学目录');
-  await shot('15_教学目录_七课打勾');
+  await shot('15_教学目录_基础进阶');
 
   // ---------- 3. 首页、练脑、设置 ----------
   await tap('hdr-back', 400);
@@ -258,11 +261,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     await tap('home-link', 400);
     if (ti === 2) await shot('16_选难度_推荐和新招');
     await tap('tier-' + ti, 600);
-    if (ti === 2) {
-      ok((await ev(() => window.__app.overlays.length)) === 1, '第一次玩「中等」：先问要不要学「区块排除」');
-      await shot('17_中等_先学一招');
-      await tap('gate-skip', 600);
-    }
+    if (ti === 2) ok((await ev(() => window.__app.overlays.length)) === 0, '第一次玩「中等」：进阶招不用学，不再弹「先学一招」');
     const r = await solve(name, ti === 3 ? '24_困难' : null);
     ok(r === 'result', name + ' 用真点击解完 → 结算');
   }
@@ -487,9 +486,13 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     ok(!!ex && ex.show === '区块排除' && ex.level === 2 && ex.chain.length >= 1, '认招：这一格要先用区块排除才定得下（比入门难两档，小樱会说「哇」）');
     // 区块排除第一次：先讲宫里被挡住、再讲 7 只能在同一行、再打叉、最后只剩一格
     await ev(() => { const s = window.__store.data; s.current = null; s.seen.demo = {}; window.__app.overlays.length = 0; window.__app.startGame(2, { skipGate: true }); });
+    await page.waitForTimeout(1500);
+    ok(!(await ev(() => window.__app.testHooks.teach())), '中等开局：进阶招不自动演示（小樱只说一句「想看演示就点小条」）');
+    await tap('focus-chip', 400);
+    await tap('focus-demo', 300);
     let tp = null;
     for (let i = 0; i < 30 && !tp; i++) { await page.waitForTimeout(250); tp = await ev(() => { const T = window.__app.testHooks.teach(); return T && T.stages.map((s) => s.text); }); }
-    ok(!!tp && tp.length >= 4, '中等开局：「区块排除」分 ' + (tp ? tp.length : 0) + ' 步讲：' + (tp ? tp.join(' / ').replace(/\n/g, '') : ''));
+    ok(!!tp && tp.length >= 4, '点小条「在这盘上演示一次」：「区块排除」分 ' + (tp ? tp.length : 0) + ' 步讲：' + (tp ? tp.join(' / ').replace(/\n/g, '') : ''));
     for (let i = 0; tp && i < tp.length; i++) { await page.waitForTimeout(i ? 2200 : 2600); await shot('36b_区块排除_第' + (i + 1) + '步'); if (i < tp.length - 1) await tap('teach-next', 100); }
     // 笔记开：数字键变成空心虚线框、小数字在它进格子以后的位置
     await ev(() => { const s = window.__store.data; s.current = null; window.__app.overlays.length = 0; window.__app.startGame(1, { skipGate: true }); });
