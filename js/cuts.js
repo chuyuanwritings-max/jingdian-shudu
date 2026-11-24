@@ -258,7 +258,7 @@ module.exports = function (app) {
                { at: 0, fx: 'particles', preset: 'spark', n: 14, origin: [0.5, 0.5], z: 3 }, { at: 0, sfx: 'dong' }] },
         { id: 'pose', type: 'pose', dur: 45,
           frames: [{ f: 6, layer: 'dots', img: 'dotsB' }],
-          fx: [{ at: 6, fx: 'text', str: opts && opts.all ? '七招全会' : '学会了 · ' + name, in: 'pop', pos: [0.5, 0.72], size: 24, color: PAPER, stroke: 'rgba(0,0,0,0)', dur: 39 },
+          fx: [{ at: 6, fx: 'text', str: opts && opts.all ? '基础全会' : '学会了 · ' + name, in: 'pop', pos: [0.5, 0.72], size: 24, color: PAPER, stroke: 'rgba(0,0,0,0)', dur: 39 },
                { at: 6, sfx: 'bell9' }] },
         { id: 'out', type: 'out', dur: 6, fx: [{ at: 0, fx: 'flash', color: th.bg, alpha: 1, hold: 2, decay: 4, paper: true }] },
       ],

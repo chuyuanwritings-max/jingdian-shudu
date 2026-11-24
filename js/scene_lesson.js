@@ -132,7 +132,7 @@ module.exports = function (app) {
       seen.cutTierAny = true; store.save();
       app.cutTier(tier, L0.name, { short: !full, onEnd: finished });
     } else if (allNow && !seen.allSeven && L0.group === 'basic') {
-      // 七招全会：一辈子一次
+      // 基础 3 课全会：一辈子一次
       seen.allSeven = true; store.save();
       app.cutLesson(T.BASIC.indexOf(L0), L0.name, { all: true, onEnd: finished });
     } else if (relearn || L0.group !== 'basic') {
