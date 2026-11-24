@@ -39,7 +39,9 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   const tap = async (id, wait) => {
     await page.waitForTimeout(30);
     if (id !== 'cs-skip') await skipCuts();
-    const p = await regionOf(id);
+    let p = await regionOf(id);
+    // 小樱的气泡要等她走到位才冒出来：等一会儿再找（最多 1.5 秒）
+    for (let i = 0; i < 15 && !p; i++) { await page.waitForTimeout(100); p = await regionOf(id); }
     if (!p) throw new Error('找不到按钮 ' + id + '（场景 ' + (await scene()) + '）');
     await click(p, wait === undefined ? 250 : wait);
   };
