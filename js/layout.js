@@ -22,7 +22,7 @@ const DEFS = {
   'play.sakura': { name: '小樱', screen: 'play', x: 311, y: 122, w: 54, h: 54, ax: 'r', ay: 't' },
   'play.board': { name: '棋盘', screen: 'play', x: 12, y: 176, w: 351, h: 351, ax: 'c', ay: 'm' },
   'play.hint': { name: '提示卡（出提示时才有）', screen: 'play', x: 12, y: 537, w: 351, h: 64, ax: 's', ay: 'm' },
-  'play.tools': { name: '工具（撤销 / 橡皮 / 笔记 / 提示）', screen: 'play', x: 8, y: 622, w: 359, h: 62, ax: 's', ay: 'b' },
+  'play.tools': { name: '工具（笔记 / 提示）', screen: 'play', x: 8, y: 622, w: 359, h: 62, ax: 's', ay: 'b' },
   'play.pad': { name: '数字键', screen: 'play', x: 8, y: 692, w: 359, h: 72, ax: 's', ay: 'b' },
   // 结算
   'result.icon': { name: '顶上的勾 / 金方块', screen: 'result', x: 153, y: 80, w: 68, h: 68, ax: 'c', ay: 't' },

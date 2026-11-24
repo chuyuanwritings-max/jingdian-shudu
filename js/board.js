@@ -7,7 +7,9 @@ function create(opts) {
   const puzzle = S.decode(opts.puzzle);
   const sol = opts.solution ? S.decode(opts.solution) : S.solve(puzzle);
   // 本局一招：这一档那一招「非用不可」的关键格（带练局不标，免得和手指抢注意力）
-  const F = !opts.guided && C.FOCUS && C.FOCUS[opts.tier || 0];
+  // 对战 / 好友挑战不教（Cc：「对战的时候，只要告诉我用了什么技能就行，不用教我的」）
+  const versus = opts.mode === 'duo' || opts.mode === 'challenge';
+  const F = !opts.guided && !versus && C.FOCUS && C.FOCUS[opts.tier || 0];
   let focus = null;
   if (F) { const keys = S.focusCells(puzzle, F.techs); if (keys.length) focus = { lesson: F.lesson, name: F.name, keys, got: [] }; }
   return {
@@ -19,7 +21,7 @@ function create(opts) {
     scored: new Array(81).fill(false), missed: new Array(81).fill(false), lastCorrectAt: 0,
     history: [], done: false, lost: false, revives: 0, selected: -1,
     // 带练局（新人第一局）：前 guideLeft 步手指带着走，提示不限次数
-    guided: !!opts.guided, guideLeft: opts.guided ? 3 : 0,
+    guided: !!opts.guided, guideLeft: opts.guided ? 3 : 0, versus,
   };
 }
 
@@ -69,7 +71,8 @@ function input(b, k, v, noteMode, settings) {
   if (autoClear) for (const p of S.PEERS[k]) if (b.notes[p] & S.bit(v)) touched.push(p);
   remember(b, touched);
   b.vals[k] = v;
-  b.notes[k] = 0;
+  // 填错不擦笔记：错的数留两秒自己拿掉，底下的笔记原样露出来（Cc：「地上的笔记不要擦掉」）
+  if (right) b.notes[k] = 0;
   if (!right) {
     b.mistakes++;
     b.missed[k] = true;
@@ -99,6 +102,18 @@ function award(b, k, v, noScore) {
   const win = b.vals.every((x, i) => isRight(b, i));
   if (win) b.done = true;
   return { gain, units, digitDone, win };
+}
+
+// 填错的数留两秒后自己拿掉（Cc：「填错的，在原地留两秒，自动把填错的那个格子拿掉就好了」）。
+// 只拿还是那个错数的格子：这两秒里改填了别的数就不动。返回 true = 拿掉了
+function dropWrong(b, k, v) {
+  if (b.vals[k] !== v || !isWrong(b, k)) return false;
+  b.vals[k] = 0;
+  return true;
+}
+// 存档里留着的错数（两秒没到就退出了）：读档时一次拿掉
+function dropAllWrong(b) {
+  for (let k = 0; k < 81; k++) if (isWrong(b, k)) b.vals[k] = 0;
 }
 
 function erase(b, k) {
@@ -137,4 +152,4 @@ function revive(b) {
   b.revives++;
 }
 
-module.exports = { focusUse, create, input, erase, undo, findHint, fillHint, revive, counts, rightGrid, isRight, isWrong, locked, solAt };
+module.exports = { dropWrong, dropAllWrong, focusUse, create, input, erase, undo, findHint, fillHint, revive, counts, rightGrid, isRight, isWrong, locked, solAt };

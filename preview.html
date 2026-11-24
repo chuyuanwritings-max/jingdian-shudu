@@ -55,7 +55,9 @@ function create(opts) {
   const puzzle = S.decode(opts.puzzle);
   const sol = opts.solution ? S.decode(opts.solution) : S.solve(puzzle);
   // 本局一招：这一档那一招「非用不可」的关键格（带练局不标，免得和手指抢注意力）
-  const F = !opts.guided && C.FOCUS && C.FOCUS[opts.tier || 0];
+  // 对战 / 好友挑战不教（Cc：「对战的时候，只要告诉我用了什么技能就行，不用教我的」）
+  const versus = opts.mode === 'duo' || opts.mode === 'challenge';
+  const F = !opts.guided && !versus && C.FOCUS && C.FOCUS[opts.tier || 0];
   let focus = null;
   if (F) { const keys = S.focusCells(puzzle, F.techs); if (keys.length) focus = { lesson: F.lesson, name: F.name, keys, got: [] }; }
   return {
@@ -67,7 +69,7 @@ function create(opts) {
     scored: new Array(81).fill(false), missed: new Array(81).fill(false), lastCorrectAt: 0,
     history: [], done: false, lost: false, revives: 0, selected: -1,
     // 带练局（新人第一局）：前 guideLeft 步手指带着走，提示不限次数
-    guided: !!opts.guided, guideLeft: opts.guided ? 3 : 0,
+    guided: !!opts.guided, guideLeft: opts.guided ? 3 : 0, versus,
   };
 }
 
@@ -117,7 +119,8 @@ function input(b, k, v, noteMode, settings) {
   if (autoClear) for (const p of S.PEERS[k]) if (b.notes[p] & S.bit(v)) touched.push(p);
   remember(b, touched);
   b.vals[k] = v;
-  b.notes[k] = 0;
+  // 填错不擦笔记：错的数留两秒自己拿掉，底下的笔记原样露出来（Cc：「地上的笔记不要擦掉」）
+  if (right) b.notes[k] = 0;
   if (!right) {
     b.mistakes++;
     b.missed[k] = true;
@@ -147,6 +150,18 @@ function award(b, k, v, noScore) {
   const win = b.vals.every((x, i) => isRight(b, i));
   if (win) b.done = true;
   return { gain, units, digitDone, win };
+}
+
+// 填错的数留两秒后自己拿掉（Cc：「填错的，在原地留两秒，自动把填错的那个格子拿掉就好了」）。
+// 只拿还是那个错数的格子：这两秒里改填了别的数就不动。返回 true = 拿掉了
+function dropWrong(b, k, v) {
+  if (b.vals[k] !== v || !isWrong(b, k)) return false;
+  b.vals[k] = 0;
+  return true;
+}
+// 存档里留着的错数（两秒没到就退出了）：读档时一次拿掉
+function dropAllWrong(b) {
+  for (let k = 0; k < 81; k++) if (isWrong(b, k)) b.vals[k] = 0;
 }
 
 function erase(b, k) {
@@ -185,13 +200,13 @@ function revive(b) {
   b.revives++;
 }
 
-module.exports = { focusUse, create, input, erase, undo, findHint, fillHint, revive, counts, rightGrid, isRight, isWrong, locked, solAt };
+module.exports = { dropWrong, dropAllWrong, focusUse, create, input, erase, undo, findHint, fillHint, revive, counts, rightGrid, isRight, isWrong, locked, solAt };
 
 });
 __def("js/config.js", function (module, exports, require) {
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.10.2';
+const VERSION = '0.11';
 
 // 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
 // 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
@@ -1634,7 +1649,7 @@ const DEFS = {
   'play.sakura': { name: '小樱', screen: 'play', x: 311, y: 122, w: 54, h: 54, ax: 'r', ay: 't' },
   'play.board': { name: '棋盘', screen: 'play', x: 12, y: 176, w: 351, h: 351, ax: 'c', ay: 'm' },
   'play.hint': { name: '提示卡（出提示时才有）', screen: 'play', x: 12, y: 537, w: 351, h: 64, ax: 's', ay: 'm' },
-  'play.tools': { name: '工具（撤销 / 橡皮 / 笔记 / 提示）', screen: 'play', x: 8, y: 622, w: 359, h: 62, ax: 's', ay: 'b' },
+  'play.tools': { name: '工具（笔记 / 提示）', screen: 'play', x: 8, y: 622, w: 359, h: 62, ax: 's', ay: 'b' },
   'play.pad': { name: '数字键', screen: 'play', x: 8, y: 692, w: 359, h: 72, ax: 's', ay: 'b' },
   // 结算
   'result.icon': { name: '顶上的勾 / 金方块', screen: 'result', x: 153, y: 80, w: 68, h: 68, ax: 'c', ay: 't' },
@@ -1990,7 +2005,7 @@ module.exports = function (app) {
     ['mistakeLimit', '错 3 次算输', '关掉就不限次数'],
     ['autoNotes', '自动擦笔记', '填对一个数，同行同列同宫的这个笔记擦掉'],
     ['sameHighlight', '高亮相同数字', ''],
-    ['chainLight', '填对时闪过思路', '一道光走一遍：这一格是怎么想出来的'],
+    ['chainLight', '填对时显示用了哪招', '格子上飘出招名，一道光画叉走一遍怎么排除的'],
     ['reduceMotion', '简洁动效', '过场只播短的，不震屏、不闪'],
     ['showTimer', '显示计时', ''],
     ['sound', '声音', ''],
@@ -4006,10 +4021,14 @@ module.exports = function (app) {
     if (k < 0 || Board.locked(b, k)) { app.sound('select', 0.4); return; }
     const r = Board.input(b, k, v, noteMode, store.data.settings);
     const t = P.now();
-    if (r.kind === 'note') { app.sound('note'); }
+    // 记完一个笔记就放开这一格：再点别的数字只是看看它在哪、还剩几个，不会又记进去
+    // （Sylvie：「标记完之后我想看一下其他的数字……点其他数字的时候，那个框框里就自动标记上了」）。同一格再记：先点一下格子
+    if (r.kind === 'note') { app.sound('note'); b.selected = -1; }
     else if (r.kind === 'correct') onCorrect(k, v, r, t, false);
     else if (r.kind === 'wrong') {
       fx.shake = { k, t0: t };
+      // 两秒后自己拿掉（输了的那一下不拿：弹窗看广告复活后再拿）
+      if (!r.lost) later(2000, () => { if (Board.dropWrong(b, k, v)) { fx.pops[k] = P.now(); app.sound('erase', 0.5); app.animate(300); persist(); } });
       if (!r.lost) SK.say(['没关系～\n再看看同一行、同一列', '差一点点！\n这一格再想想', '别急，慢慢来～'][b.mistakes % 3], 'worry', 2000);
       app.sound('wrong');
       app.buzz('heavy');
@@ -4044,12 +4063,21 @@ module.exports = function (app) {
       });
     });
     // 同一步撞在一起：只响一个声音、只震一次。优先级：通关 > 数字填完 > 行列宫
-    if (r.units.length && !r.win && !r.digitDone) later(220, () => { app.sound('unit'); app.buzz('medium'); });
+    // 震动（Cc：「随着那个特效延伸出去的，像波浪一般的震动」）：方块落地「咚」一下；填满行列宫时，
+    // 光每往外跳一格震一下轻的，跟着波浪走到头。微信里 iPhone 才震得到（网页版 iPhone 浏览器不给震动）
+    later(150, () => app.buzz('medium'));
+    if (r.units.length && !r.win && !r.digitDone) {
+      later(220, () => app.sound('unit'));
+      let far = 0;
+      r.units.forEach((u) => S.UNITS[u].forEach((x) => { far = Math.max(far, Math.abs(S.ROW(x) - S.ROW(k)) + Math.abs(S.COL(x) - S.COL(k))); }));
+      for (let d = 1; d <= far; d++) later(220 + d * 45, () => app.buzz(d === far ? 'medium' : 'light'));
+    }
     if (r.digitDone && !r.win) digitBurst(v, land);
     app.animate(1200);
     if (r.win) onWin(t);
   }
 
+  const versus = () => b.mode === 'duo' || b.mode === 'challenge';
   // ---------- 认招：这一格是怎么想出来的（小樱认出来、光走一遍、记下用了哪招）----------
   const SAY_FOCUS = ['看到了！这是「{t}」～', '漂亮的「{t}」！', '「{t}」用得好～', '这一步是「{t}」！'];
   function recognize(k, v, r, t) {
@@ -4059,9 +4087,26 @@ module.exports = function (app) {
     if (!ex) return; // 猜对的（或者用了更难的招）：不硬说
     const techs = b.techs || (b.techs = {});
     techs[ex.show] = (techs[ex.show] || 0) + 1;
-    if (store.data.settings.chainLight !== false) playChain(k, v, ex, grid, t, 1);
-    const f = b.focus;
     const said = b.saidTech || (b.saidTech = {});
+    // 一个开关管三样（Cc：「显示技能，以及显示填对之后画叉的排除效果，合并在一个开关里」）：
+    // 格子上飘招名、一道光画叉、小樱认招。关了照样记数（本局一招小条、结算页「这局用的招」还在）
+    const show = store.data.settings.chainLight !== false;
+    // 对战 / 好友挑战：不教、不闪光，只告诉你这一步用的是哪招（格子上飘招名，小樱每招说一次）
+    if (versus()) {
+      if (!show) return;
+      fx.floats.push({ k, t0: t + 200, text: ex.show, focus: true });
+      if (ex.level > b.tier && !said[ex.show]) {
+        said[ex.show] = true;
+        later(380, () => SK.say('哇！你用了「' + ex.show + '」\n这是「' + S.TIERS[Math.min(5, ex.level)].name + '」的招！', 'wow', 2400));
+      } else if (!said[ex.show]) {
+        said[ex.show] = true;
+        later(380, () => SK.say('这步是「' + ex.show + '」～', 'happy', 1600));
+      }
+      return;
+    }
+    const f = b.focus;
+    if (!show) { Board.focusUse(b, k, ex.show) && (fx.focusAt = t); return; }
+    playChain(k, v, ex, grid, t, 1);
     // 用了比这一档更难的招：小樱「哇」一声（每局每招说一次）
     if (ex.level > b.tier && !said[ex.show]) {
       said[ex.show] = true;
@@ -4079,9 +4124,9 @@ module.exports = function (app) {
   }
 
   // ---------- 一道光顺着思维链划过去 ----------
-  // 排除法：别处的同一个数各自放一道光，顺着它那一行 / 列扫过这一宫，扫到的格子打叉，剩下那一格亮金
+  // 排除法：别处的同一个数各自放一道光，顺着它那一行 / 列扫过这一宫，扫到的格子压灰，剩下那一格亮金
   // 唯一候选：这一格周围的 8 个不同的数各连一道光过来
-  // 区块排除、数对：先亮出那几格，再把被它们删掉的格子打叉，最后同上
+  // 区块排除、数对：先亮出那几格，再把被它们删掉的格子压灰，最后同上
   function playChain(k, v, ex, grid, t, slow) {
     const items = [];
     const sp = slow || 1;
@@ -4141,6 +4186,14 @@ module.exports = function (app) {
     app.animate(fx.chain.end - P.now() + 100);
     return at;
   }
+  // 「这里放不了」：格子压灰 + 一道灰斜线。不用红叉——Cc：「人一看到那个叉叉，就感觉填错了」
+  function blocked(ctx, k, a) {
+    if (a <= 0) return;
+    const r = DB.cellRect(geo, k), th = app.th;
+    ctx.globalAlpha = 0.16 * a; ctx.fillStyle = th.text; ctx.fillRect(r.x, r.y, r.s + 0.5, r.s + 0.5);
+    ctx.globalAlpha = 0.55 * a; ctx.strokeStyle = th.sub; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(r.x + r.s * 0.3, r.y + r.s * 0.7); ctx.lineTo(r.x + r.s * 0.7, r.y + r.s * 0.3); ctx.stroke();
+  }
   function drawChain(ctx, t) {
     const c = fx.chain;
     if (!c || t > c.end + 400) { fx.chain = null; return; }
@@ -4170,9 +4223,7 @@ module.exports = function (app) {
         ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(hx, hy); ctx.stroke();
         if (p < 1) { ctx.globalAlpha = fade; ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2); ctx.fill(); }
       } else if (it.kind === 'x') {
-        const [x, y, s] = ctr(it.k), p = Math.min(1, e / 120), d = s * 0.18;
-        ctx.globalAlpha = 0.75 * p * fade; ctx.strokeStyle = th.wrong; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(x - d, y - d); ctx.lineTo(x + d, y + d); ctx.moveTo(x + d, y - d); ctx.lineTo(x - d, y + d); ctx.stroke();
+        blocked(ctx, it.k, Math.min(1, e / 120) * fade);
       } else if (it.kind === 'target') {
         const r = DB.cellRect(geo, it.k), p = Math.min(1, e / 200);
         ctx.globalAlpha = (0.55 - 0.35 * p) * fade + 0.1; ctx.fillStyle = GOLD;
@@ -4184,26 +4235,173 @@ module.exports = function (app) {
     ctx.restore();
   }
 
-  // ---------- 开局演示：先在这盘上走一遍本局那一招，再让你自己填 ----------
+  // ---------- 开局演示：先在这盘上一步一步讲本局那一招，讲完让你自己填 ----------
+  // Cc：「这个特效第一次教的时候，还是得慢慢解释怎么排除出来的吧」→ 不再一口气闪完：
+  // 棋盘下面一张讲解卡，一次一句话 + 棋盘上画这一步的东西；点「下一步」才往下走；讲的时候计时停着
   let demo = null; // { k, v, t0 } 手指指着、等你填的那一格
+  let teach = null; // { stages: [{ ch, text, items }], i, ts, k, v }
   function startDemo(narrate) {
     const f = b.focus;
     if (!f) return false;
     const grid = Board.rightGrid(b);
-    for (const k of f.keys) {
+    // 挑一格讲得清的：中间不夹别的招（all = 用到的推理全在 chain 里），每个叉都指得出是哪个数挡的（lone = 0）
+    // 先看本局那几处关键格，再看盘上别的空格；都不够干净就挑最干净的
+    let best = null;
+    const cells = []; for (let k = 0; k < 81; k++) cells.push(k);
+    const order = f.keys.concat(cells.filter((k) => f.keys.indexOf(k) < 0));
+    for (const k of order) {
       if (grid[k]) continue;
-      const v = +b.sol[k];
-      const g2 = grid.slice();
-      const ex = S.explain(g2, k, v);
+      const v = +b.sol[k], ex = S.explain(grid.slice(), k, v);
       if (!ex || ex.show !== f.name) continue;
-      const t = P.now();
-      SK.say(narrate || '先看我演示一次「' + f.name + '」～', 'happy', 2400);
-      const end = playChain(k, v, ex, g2, t + 700, 2.2);
-      later(end - t + 200, () => SK.say('看，只剩这一格能放 ' + v + '！\n轮到你：把 ' + v + ' 填进去', 'cheer', 5200));
-      later(end - t + 200, () => { demo = { k, v, t0: P.now() }; app.animate(400); });
-      return true;
+      const stages = teachStages(k, v, ex, grid);
+      const bad = stages.lone + (ex.all - ex.chain.length) * 10;
+      if (!best || bad < best.bad) best = { k, v, stages, bad };
+      if (!bad) break;
     }
-    return false;
+    if (!best) return false;
+    demo = null; fx.chain = null; b.selected = -1;
+    teach = { stages: best.stages, i: 0, ts: P.now(), k: best.k, v: best.v, bad: best.bad };
+    SK.say(narrate || '我一步一步讲「' + f.name + '」～', 'happy', 2200);
+    app.animate(1500);
+    return true;
+  }
+  const UN = (u) => (u < 9 ? '这一行' : u < 18 ? '这一列' : '这一宫');
+  const dist = (a, c) => Math.abs(S.ROW(a) - S.ROW(c)) + Math.abs(S.COL(a) - S.COL(c));
+  // 挡住这些格子的 v（不在 unit 里的那个），找不到的（被前面的招删掉的）直接压灰
+  function rayItems(grid, cells, v, unit, t0, tally) {
+    const items = [], byP = {}, lone = [];
+    cells.forEach((c) => {
+      const p = S.PEERS[c].find((x) => grid[x] === v && S.UNITS[unit].indexOf(x) < 0);
+      if (p === undefined) lone.push(c); else (byP[p] = byP[p] || []).push(c);
+    });
+    Object.keys(byP).forEach((ps, i) => {
+      const p = +ps, at = t0 + i * 450;
+      items.push({ kind: 'ring', k: p, t0: at });
+      byP[p].forEach((c) => { const dur = 220 + dist(p, c) * 70; items.push({ kind: 'ray', a: p, b: c, t0: at + 150, dur }); items.push({ kind: 'x', k: c, t0: at + 150 + dur }); });
+    });
+    lone.forEach((c) => items.push({ kind: 'x', k: c, t0: t0 }));
+    if (tally) tally.lone += lone.length;
+    return items;
+  }
+  function teachStages(k, v, ex, grid) {
+    const stages = [], crossed = new Set(), tally = { lone: 0 };
+    const empty = (u, but) => S.UNITS[u].filter((c) => !grid[c] && (!but || but.indexOf(c) < 0));
+    ex.chain.forEach((st, ci) => {
+      const ch = 'c' + ci, d = st.digit, n = st.focus.length;
+      const elimX = st.elim.map((e) => ({ kind: 'x', k: e.k, t0: 200, keep: true }));
+      st.elim.forEach((e) => crossed.add(e.k));
+      if (st.tech === 'pointing' || st.tech === 'claiming') {
+        const A = st.unit, B = st.unit2; // 先看 A（宫 / 行），v 只在 A 和 B 重叠的那几格；所以 B 里别的格子不能放 v
+        stages.push({ ch, text: '先看' + UN(A) + '：别处的 ' + d + ' 把压灰的空格都挡住了', items: [{ kind: 'zone', cells: S.UNITS[A], t0: 0 }].concat(rayItems(grid, empty(A, st.focus), d, A, 300, tally)) });
+        stages.push({ ch, text: UN(A) + '的 ' + d + ' 只能在标出来的这 ' + n + ' 格\n它们正好都在' + UN(B) + '里', items: [{ kind: 'zone', cells: S.UNITS[B], t0: 0, dim: true }].concat(st.focus.map((c, i) => ({ kind: 'ghost', k: c, v: d, t0: 150 + i * 150 }))) });
+        stages.push({ ch, text: '所以 ' + d + ' 一定在这 ' + n + ' 格里\n' + UN(B) + '别的格子都不能放 ' + d + ' 了', items: st.focus.map((c) => ({ kind: 'ghost', k: c, v: d, t0: 0 })).concat(elimX) });
+      } else if (st.digits && st.focus.length === 2) {
+        const [a, c2] = st.digits, U = st.unit, naked = /naked/.test(st.tech);
+        stages.push({ ch, text: naked ? '看这两格：都只能填 ' + a + ' 或 ' + c2 : '看' + UN(U) + '：' + a + ' 和 ' + c2 + ' 都只能放在这两格', items: [{ kind: 'zone', cells: st.focus, t0: 0 }].concat(st.focus.map((c, i) => ({ kind: 'ghost', k: c, v: a + ' ' + c2, t0: 200 + i * 150 }))) });
+        stages.push({ ch, text: naked ? a + ' 和 ' + c2 + ' 被这两格占定了\n' + UN(U) + '别的格子不能再填它们' : '这两格被 ' + a + '、' + c2 + ' 占定了\n不能再填别的数', items: [{ kind: 'zone', cells: S.UNITS[U], t0: 0, dim: true }].concat(elimX) });
+      } else {
+        stages.push({ ch, text: '先看亮着的格子：它们挡住了压灰的地方', items: [{ kind: 'zone', cells: st.focus || st.cells, t0: 0 }].concat(elimX) });
+      }
+    });
+    const fin = ex.final, ch = 'f';
+    if (fin.tech === 'hiddenBox' || fin.tech === 'hiddenLine') {
+      const U = fin.unit, rest = empty(U, [k]);
+      const fresh = rest.filter((c) => !crossed.has(c)); // 前面已经压灰的不再重复
+      stages.push({ ch, text: (ex.chain.length ? '再看' : '看') + UN(U) + '：' + v + ' 能放哪？\n别处的 ' + v + ' 顺着行、列把压灰的格子挡住了', items: [{ kind: 'zone', cells: S.UNITS[U], t0: 0 }].concat(rayItems(grid, fresh, v, U, 300, tally)) });
+    } else if (fin.tech === 'nakedSingle') {
+      const items = [{ kind: 'zone', cells: [k], t0: 0 }];
+      let i = 0;
+      for (let d = 1; d <= 9; d++) {
+        if (d === v) continue;
+        const p = S.PEERS[k].filter((x) => grid[x] === d).sort((a, c) => dist(a, k) - dist(c, k))[0];
+        if (p === undefined) continue;
+        items.push({ kind: 'ring', k: p, t0: 200 + i * 260 }, { kind: 'ray', a: p, b: k, t0: 260 + i * 260, dur: 240 });
+        i++;
+      }
+      // 前面的招从这一格删掉的数（比如区块排除刚排除的那个）
+      const gone = [];
+      ex.chain.forEach((st) => st.elim.forEach((e) => { if (e.k === k) S.digits(e.m).forEach((d) => gone.indexOf(d) < 0 && gone.push(d)); }));
+      tally.lone += Math.max(0, 8 - i - gone.length); // 剩下没交代的：讲不清
+      stages.push({ ch, text: '看这一格：它的行、列、宫里已经有了 ' + i + ' 个不同的数（圈出来的）' + (gone.length ? '\n刚才又排除了 ' + gone.join('、') : ''), items });
+    } else if (fin.tech === 'fullHouse') {
+      stages.push({ ch, text: UN(fin.unit) + '只剩这一格是空的', items: [{ kind: 'zone', cells: S.UNITS[fin.unit], t0: 0 }] });
+    }
+    stages.lone = tally.lone;
+    stages.push({ ch, text: fin.tech === 'nakedSingle' ? '1 到 9 只剩 ' + v + ' 没出现\n这一格只能填 ' + v + '！' : '只剩这一格能放 ' + v + '！', items: [{ kind: 'target', k, t0: 0 }] });
+    return stages;
+  }
+  function teachNext() {
+    if (!teach) return;
+    if (teach.i < teach.stages.length - 1) { teach.i++; teach.ts = P.now(); app.sound('tap'); app.animate(2500); return; }
+    const { k, v } = teach;
+    teach = null;
+    demo = { k, v, t0: P.now() };
+    SK.say('轮到你：把 ' + v + ' 填进去', 'cheer', 3600);
+    app.animate(400);
+  }
+  function drawTeach(ctx, t) {
+    if (!teach) return;
+    const th = app.th, GOLD = '#FFC24A', cur = teach.stages[teach.i], e0 = t - teach.ts;
+    const ctr = (k) => { const r = DB.cellRect(geo, k); return [r.x + r.s / 2, r.y + r.s / 2, r.s]; };
+    const item = (it, e, past) => {
+      if (e < 0) return;
+      if (it.kind === 'zone') {
+        ctx.globalAlpha = (past ? 0.12 : Math.min(1, e / 220) * 0.34) * (it.dim ? 0.6 : 1); ctx.fillStyle = GOLD;
+        it.cells.forEach((k) => { const r = DB.cellRect(geo, k); ctx.fillRect(r.x, r.y, r.s + 0.5, r.s + 0.5); });
+      } else if (it.kind === 'ring') {
+        const [x, y, s] = ctr(it.k), p = Math.min(1, e / 260);
+        ctx.globalAlpha = past ? 0.5 : 0.95; ctx.strokeStyle = GOLD; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(x, y, s * (0.3 + p * 0.14), 0, Math.PI * 2); ctx.stroke();
+      } else if (it.kind === 'ray') {
+        if (past) return;
+        const [x1, y1] = ctr(it.a), [x2, y2] = ctr(it.b), p = Math.min(1, e / it.dur);
+        const hx = x1 + (x2 - x1) * p, hy = y1 + (y2 - y1) * p;
+        ctx.lineCap = 'round';
+        ctx.globalAlpha = 0.3; ctx.strokeStyle = GOLD; ctx.lineWidth = 8;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(hx, hy); ctx.stroke();
+        ctx.globalAlpha = p < 1 ? 0.95 : 0.6; ctx.strokeStyle = '#FFE3A0'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(hx, hy); ctx.stroke();
+        if (p < 1) { ctx.globalAlpha = 1; ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2); ctx.fill(); }
+      } else if (it.kind === 'x') {
+        blocked(ctx, it.k, Math.min(1, e / 140));
+      } else if (it.kind === 'ghost') {
+        const [x, y, s] = ctr(it.k), p = Math.min(1, e / 200);
+        ctx.globalAlpha = p;
+        ui.text(ctx, String(it.v), x, y, Math.round(s * (String(it.v).length > 1 ? 0.3 : 0.46)), th.gold, 'center', 700);
+      } else if (it.kind === 'target') {
+        const r = DB.cellRect(geo, it.k), a = 0.5 + 0.5 * Math.sin(e / 240);
+        ctx.globalAlpha = 0.35 + 0.3 * a; ctx.fillStyle = GOLD; ctx.fillRect(r.x, r.y, r.s + 0.5, r.s + 0.5);
+        ctx.globalAlpha = 1; ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 3; ctx.strokeRect(r.x + 2, r.y + 2, r.s - 4, r.s - 4);
+        ui.text(ctx, String(teach.v), r.x + r.s / 2, r.y + r.s / 2, Math.round(r.s * 0.5), th.gold, 'center', 700);
+      }
+    };
+    ctx.save();
+    teach.stages.forEach((sg, si) => {
+      if (si > teach.i) return;
+      const past = si < teach.i;
+      // 前面几步：同一段的东西留着（淡一点）；更早一段只留压灰的结果
+      sg.items.forEach((it) => { if (!past || sg.ch === cur.ch || it.keep) item(it, past ? 1e6 : e0 - it.t0, past); });
+    });
+    ctx.restore();
+    app.animate(60);
+  }
+  // 讲解卡：在棋盘和工具中间；讲的时候挡住棋盘和按键，只能点「下一步」
+  function drawTeachCard(ctx, th, t) {
+    ui.button({ id: 'teach-block', x: 0, y: L.infoY, w: app.W, h: app.H - L.infoY, silent: true });
+    const p = Math.min(1, (t - teach.ts) / 220), x = L.hint.x, w = L.hint.w, h = L.hint.h, y = L.hint.y;
+    const last = teach.i === teach.stages.length - 1, btnW = 84;
+    ui.card(ctx, x, y, w, h, 14, th);
+    ctx.save(); ctx.globalAlpha = p;
+    const text = teach.stages[teach.i].text, textW = w - btnW - 32;
+    const lines = text.split('\n');
+    let n = 0; lines.forEach((ln) => { n += ui.wrap(ctx, ln, 0, 0, textW, 14, 18, null); });
+    let ty = y + h / 2 - (n * 18) / 2;
+    lines.forEach((ln) => { ty += ui.wrap(ctx, ln, x + 14, ty, textW, 14, 18, th.text, 600) * 18; });
+    ctx.restore();
+    const on = ui.button({ id: 'teach-next', x: x + w - btnW - 8, y: y + 8, w: btnW, h: h - 16, onTap: teachNext });
+    ui.fillRR(ctx, x + w - btnW - 8, y + 8, btnW, h - 16, 12, on ? th.sel : th.primary);
+    ui.text(ctx, last ? '轮到我填' : '下一步', x + w - btnW / 2 - 8, y + h / 2 - 6, 14, '#FFFFFF', 'center', 700);
+    ui.text(ctx, (teach.i + 1) + ' / ' + teach.stages.length, x + w - btnW / 2 - 8, y + h / 2 + 12, 10, 'rgba(255,255,255,0.8)', 'center', 600);
   }
   function drawDemo(ctx, t) {
     if (!demo) return;
@@ -4246,7 +4444,8 @@ module.exports = function (app) {
       cells.forEach((x) => sparkAt(x, full ? 3 : 2));
       if (full) fx.boardShake = { t0: t, dur: 6 * F, amp: 2 };
       app.sound('bell' + Math.min(8, b.digitCount));
-      app.buzz('medium');
+      app.buzz('heavy'); // 9 个齐了：重重一下，再两下轻的余震
+      later(70, () => app.buzz('light')); later(140, () => app.buzz('light'));
     });
     fx.keyDone[v] = tS;
     app.animate(tEnd - P.now() + 100);
@@ -4362,7 +4561,7 @@ module.exports = function (app) {
   function showLost() {
     app.sound('lose');
     app.lostModal(b, {
-      revive: () => app.showAd('revive', '再给一次机会', () => { Board.revive(b); persist(); app.toast('接着来！还能再错 1 次'); }, () => showLost()),
+      revive: () => app.showAd('revive', '再给一次机会', () => { Board.revive(b); Board.dropAllWrong(b); persist(); app.toast('接着来！还能再错 1 次'); }, () => showLost()),
       restart: () => app.restartGame(),
       fresh: () => { store.recordLoss(b); store.data.current = null; app.startGame(b.tier, b.mode === 'daily' ? { mode: 'normal' } : {}); },
     });
@@ -4423,7 +4622,7 @@ module.exports = function (app) {
   // 本局一招：信息行下面一个小条「本局一招 · 区块排除 1/3」；全用上了变金；点一下讲这一招、能去学
   function drawFocus(ctx, th, t) {
     const f = b.focus;
-    if (!f || b.guided) return;
+    if (!f || b.guided || versus()) return;
     const r = LY.rect('play.focus'), kk = LY.k('play.focus', r);
     const all = f.got.length >= f.keys.length, many = f.keys.length > 9;
     const pulse = fx.focusAt ? Math.max(0, 1 - (t - fx.focusAt) / 500) : 0;
@@ -4536,13 +4735,23 @@ module.exports = function (app) {
         ui.text(ctx, String(v), x + keyW / 2, ty + cs / 2, 24, th.faint, 'center', 500);
       } else {
         ctx.save();
-        const tilt = on ? 0 : PAD_TILT[v - 1] * Math.PI / 180;
+        const tilt = on || opts.noteMode ? 0 : PAD_TILT[v - 1] * Math.PI / 180;
         ctx.translate(tx + cs / 2, ty + cs / 2 + (on ? 2 : 0));
         ctx.rotate(tilt);
         if (on) ctx.scale(0.94, 0.94);
         ctx.translate(-(tx + cs / 2), -(ty + cs / 2));
-        if (opts.noteMode) ctx.globalAlpha = 0.6;
-        DB.sampleTile(ctx, th, store.data.settings.tileStyle, tx, ty, cs, v, 0, app.now, opts.active === v);
+        if (opts.noteMode) {
+          // 笔记开：键变成空心虚线框，小数字放在它进格子以后的位置（1 左上 … 9 右下）——一眼看出现在是记笔记
+          // （Cc：「笔记开和关的时候，底下的数字应该显示的效果不一样……现在长得一样，分不出来」）
+          const ns = Math.min(keyW - 6, cs), nx = x + (keyW - ns) / 2, ny = ty + (cs - ns) / 2;
+          ui.fillRR(ctx, nx, ny, ns, ns, 8, opts.active === v ? th.soft : th.card);
+          ctx.strokeStyle = th.primary; ctx.lineWidth = 1.5;
+          if (ctx.setLineDash) ctx.setLineDash([3, 3]);
+          ui.rr(ctx, nx, ny, ns, ns, 8); ctx.stroke();
+          if (ctx.setLineDash) ctx.setLineDash([]);
+          const gx = nx + ns * (0.26 + ((v - 1) % 3) * 0.24), gy = ny + ns * (0.26 + Math.floor((v - 1) / 3) * 0.24);
+          ui.text(ctx, String(v), gx, gy, Math.round(ns * 0.3), th.primary, 'center', 700);
+        } else DB.sampleTile(ctx, th, store.data.settings.tileStyle, tx, ty, cs, v, 0, app.now, opts.active === v);
         ctx.restore();
       }
       if (left !== null && !done) ui.text(ctx, String(left), x + keyW / 2, opts.y + opts.h - 9, 10, th.faint, 'center');
@@ -4578,9 +4787,11 @@ module.exports = function (app) {
       noteMode = false; paused = false; hint = null; winAt = 0; party = null; guide = null; selDigit = 0;
       resetFx();
       layout();
-      demo = null; idleAt = P.now(); SK.clear();
+      demo = null; teach = null; idleAt = P.now(); SK.clear();
+      if (!b.lost) Board.dropAllWrong(b);
       // 新的一局：小樱说这盘练哪一招；这一招还没在盘上演示过，就先演示一遍再让你填（Cc：「我进来之后，系统也没教我」）
-      if (b.focus && !b.focusShown && !b.guided) {
+      if (versus()) { if (b.elapsed < 1000) setTimeout(() => SK.say('开始！你用的每一招\n我都给你记着～', 'happy', 2200), 450); }
+      else if (b.focus && !b.focusShown && !b.guided) {
         b.focusShown = true;
         const f = b.focus, seen = store.data.seen.demo || (store.data.seen.demo = {});
         if (!seen[f.lesson]) {
@@ -4593,7 +4804,7 @@ module.exports = function (app) {
     onHide() { if (b && !b.done && !winAt) { paused = true; persist(); app.redraw(); } },
     update(dt, t) {
       if (fx) { runEvents(t); if (fx.sparks.length) stepSparks(dt); }
-      if (!b || paused || winAt || b.lost || app.overlays.length) return;
+      if (!b || paused || winAt || b.lost || teach || app.overlays.length) return; // 讲解的时候不计时
       b.elapsed += dt;
       if (t - idleAt > 45000 && !SK.busy(t)) { idleAt = t; SK.say('卡住了？\n点「提示」我教你～', 'think', 3000); app.animate(100); }
       const sec = Math.floor(b.elapsed / 1000);
@@ -4643,6 +4854,7 @@ module.exports = function (app) {
       }
       drawChain(ctx, t);
       drawDemo(ctx, t);
+      drawTeach(ctx, t);
       // 加分飘字
       fx.floats = fx.floats.filter((f) => t - f.t0 < 800);
       for (const f of fx.floats) {
@@ -4656,13 +4868,13 @@ module.exports = function (app) {
       // 工具 + 数字键
       const hintBadge = b.hintsLeft > 0 ? { text: String(b.hintsLeft), color: th.primary } : { text: '▶', color: th.gold };
       app.drawTools(ctx, L.toolsY, L.toolsH, [
-        { id: 'undo', label: '撤销', icon: 'undo', onTap: () => tool('undo') },
-        { id: 'erase', label: '橡皮', icon: 'eraser', onTap: () => tool('erase') },
+        // 撤销、橡皮去掉了（Cc：「橡皮擦功能没用，撤销功能也没用」——填错的数两秒自己拿掉，笔记再点一次那个数就消）
         { id: 'note', label: '笔记', icon: 'pencil', active: noteMode, badge: { text: noteMode ? '开' : '关', color: noteMode ? th.primary : th.faint }, onTap: () => tool('note') },
         { id: 'hint', label: '提示', icon: 'bulb', badge: hintBadge, onTap: () => tool('hint') },
       ], L.toolsX, L.toolsW);
       app.drawPad(ctx, { x: L.padX, w: L.padW, y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone, active: selDigit });
-      if (hint) drawHintCard(ctx, th, t);
+      if (teach) drawTeachCard(ctx, th, t);
+      else if (hint) drawHintCard(ctx, th, t);
       else if (b.guided && b.guideLeft > 0 && !winAt && !paused) drawGuide(ctx, th, t);
       // 通关第一段：棋盘以外硬切成近黑（点一下直接进第二段）
       if (party && !party.playing) {
@@ -4679,10 +4891,12 @@ module.exports = function (app) {
     board: () => b,
     cellCenter: (k) => { const r = DB.cellRect(geo, k); return { x: r.x + r.s / 2, y: r.y + r.s / 2 }; },
     padCenter: (v) => ({ x: L.padX + (v - 0.5) * L.keyW, y: L.padY + L.padH / 2 }),
-    toolCenter: (i) => ({ x: L.toolsX + (i + 0.5) * (L.toolsW / 4), y: L.toolsY + L.toolsH / 2 }),
+    toolCenter: (i) => ({ x: L.toolsX + (i + 0.5) * (L.toolsW / 2), y: L.toolsY + L.toolsH / 2 }),
     hint: () => hint,
     chain: () => fx && fx.chain,
     demo: () => demo,
+    teach: () => teach,
+    teachNext: () => teachNext(),
     sakura: () => SK,
     guide: () => guide,
     selDigit: () => selDigit,
@@ -5436,7 +5650,7 @@ function explain(grid, k, v) {
       const used = rel.length ? rel : chain.slice(-1);
       let top = fin;
       used.forEach((s) => { if (s.level > top.level) top = s; });
-      return { show: TECH_SHOW[top.tech], tech: top.tech, level: top.level, chain: used, final: fin };
+      return { show: TECH_SHOW[top.tech], tech: top.tech, level: top.level, chain: used, final: fin, all: chain.length };
     }
     let s = null;
     for (let i = 4; i < ORDER.length && !s; i++) s = ORDER[i](st); // 第 4 个起是删候选的招（区块排除……）

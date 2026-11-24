@@ -138,6 +138,8 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     tool: (i) => ev((i) => window.__app.testHooks.toolCenter(i), i),
   };
   async function solve(tierName, shotPrefix, extra) {
+    await page.waitForTimeout(600);
+    for (let i = 0; i < 8 && (await ev(() => !!(window.__app.testHooks.teach && window.__app.testHooks.teach()))); i++) await tap('teach-next', 150);
     let b = await G.board();
     const empties = [];
     for (let k = 0; k < 81; k++) if (!b.vals[k]) empties.push(k);
@@ -167,51 +169,57 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await shot('12_选难度');
   await tap('tier-0', 600);
   ok((await scene()) === 'play', '选「入门」开局');
+  // 第一次入门：讲解卡一步一步讲「排除法」，点到「轮到我填」
+  for (let i = 0; i < 8 && (await ev(() => !!window.__app.testHooks.teach())); i++) await tap('teach-next', 200);
+  await ev(() => { window.__app.testHooks.sakura().clear(); });
   await shot('13_入门开局');
   // 选中格子：同行同列同宫和相同数字高亮
   let b = await G.board();
   const given = b.vals.findIndex((v) => v);
   await click(await G.cell(given), 200);
   await shot('14_点一格_相同数字亮黄');
-  // 填错一次
+  // 笔记：开笔记，在一格记两个数
+  await click(await G.tool(0), 80);
   const e0 = b.vals.findIndex((v) => !v);
   await click(await G.cell(e0), 40);
-  await click(await G.pad((+b.sol[e0] % 9) + 1), 120);
+  const w0 = (+b.sol[e0] % 9) + 1, w1 = (w0 % 9) + 1 === +b.sol[e0] ? (w0 % 9) + 2 : (w0 % 9) + 1;
+  await click(await G.pad(w0), 60);
+  // 记完放开这一格：再点别的数字只是看看，不会记进去
+  const sel0 = await ev(() => window.__app.testHooks.board().selected);
+  await click(await G.pad(w1), 60);
+  b = await G.board();
+  ok(sel0 === -1 && b.notes[e0] === (1 << w0), '记完一个笔记就放开这一格：再点 ' + w1 + ' 只是看看，没有记进去');
+  await click(await G.cell(e0), 40);
+  await click(await G.pad(w1), 60);
+  b = await G.board();
+  const notes0 = b.notes[e0];
+  ok(notes0 === ((1 << w0) | (1 << w1)), '再点一下格子，就能接着记第二个数');
+  await click(await G.cell(e0), 40);
+  await shot('16_笔记');
+  await click(await G.tool(0), 80);
+  // 在记了笔记的格子填错：红字留两秒，自己拿掉，笔记还在
+  await click(await G.pad(w0), 120);
   await shot('15_填错_红字');
   b = await G.board();
-  ok(b.mistakes === 1, '填错记 1 次错误');
-  // 橡皮擦掉
-  await click(await G.tool(1), 120);
+  ok(b.mistakes === 1 && b.vals[e0] === w0, '填错记 1 次错误，错的数先留在格子里');
+  await page.waitForTimeout(2300);
   b = await G.board();
-  ok(b.vals[e0] === 0, '橡皮擦掉填错的数');
-  // 笔记：开笔记，记两个数，再关掉
-  await click(await G.tool(2), 80);
-  const e1 = b.vals.findIndex((v, k) => !v && k !== e0);
-  await click(await G.cell(e1), 40);
-  const v1 = +b.sol[e1];
-  await click(await G.pad(v1), 60);
-  await click(await G.pad((v1 % 9) + 1), 60);
-  await shot('16_笔记');
-  b = await G.board();
-  ok(b.notes[e1] !== 0, '笔记记上了');
+  ok(b.vals[e0] === 0 && b.notes[e0] === notes0, '两秒后错的数自己拿掉，底下的笔记原样还在（不用橡皮）');
+  await shot('15b_错数拿掉_笔记还在');
+  ok(!(await regionOf('tool-undo')) && !(await regionOf('tool-erase')) && !!(await regionOf('tool-note')) && !!(await regionOf('tool-hint')), '工具只剩「笔记」「提示」（撤销、橡皮去掉了）');
+  const e1 = e0, v1 = +b.sol[e1];
   // 学 Sudoku 2：点数字键 → 所有这个数 + 笔记里有它的格子亮黄
   await ev(() => { window.__app.testHooks.board().selected = -1; window.__app.redraw(); });
   await click(await G.pad(v1), 200);
   ok((await ev(() => window.__app.testHooks.selDigit())) === v1, '没选格子时点数字：只让这个数亮起来，不填');
   await shot('16b_点数字_同数和笔记格亮黄');
-  await click(await G.tool(2), 80);
-  // 在同一行别的格填 v1 的那个格子……直接填 e1 本身：笔记被替换
-  // 撤销：先填对一格，再撤销
   await click(await G.cell(e1), 40);
   await click(await G.pad(v1), 300);
   await shot('17_填对_高光');
   b = await G.board();
-  ok(b.vals[e1] === v1 && b.score > 0, '填对得分 ' + b.score);
-  await click(await G.tool(0), 120);
-  b = await G.board();
-  ok(b.vals[e1] === 0, '撤销把它撤掉了');
+  ok(b.vals[e1] === v1 && b.score > 0 && b.notes[e1] === 0, '填对得分 ' + b.score + '，这一格的笔记清掉');
   // 提示：第一次免费
-  await click(await G.tool(3), 400);
+  await click(await G.tool(1), 400);
   await shot('18_提示_先说用哪招');
   const h = await ev(() => { const x = window.__app.testHooks.hint(); return x ? { text: x.h.text, k: x.h.place.k, v: x.h.place.v } : null; });
   ok(!!h, '提示：' + (h && h.text));
@@ -219,7 +227,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   b = await G.board();
   ok(h && b.vals[h.k] === h.v, '提示第二步：直接填上');
   // 第二次提示要看广告
-  await click(await G.tool(3), 300);
+  await click(await G.tool(1), 300);
   await shot('19_提示_看广告');
   ok((await ev(() => window.__app.overlays.length)) === 1, '提示用完 → 弹广告');
   await page.waitForTimeout(3600);
@@ -430,6 +438,9 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     await p3.waitForTimeout(4200);
     const gb = await p3.evaluate(() => { const b = window.__app.testHooks.board(); return { scene: window.__app.sceneName, mode: b && b.mode, puzzle: b && b.puzzle }; });
     ok(gb.scene === 'play' && gb.mode === 'duo' && gb.puzzle === inv.q.p, '到点自动开局：同一道题，「一起做」模式');
+    await p3.waitForTimeout(1200);
+    const vs = await p3.evaluate(() => { const b = window.__app.testHooks.board(); return { focus: !!b.focus, teach: !!window.__app.testHooks.teach(), chip: !!window.__regions().find((r) => r.id === 'focus-chip') }; });
+    ok(!vs.focus && !vs.teach && !vs.chip, '对战：没有「本局一招」、开局不演示（Cc：对战只告诉我用了哪招，不用教）');
     await ctx3.close();
     // 我做完过的题收到朋友的成绩：直接并排比
     await ev((p) => { const s = window.__store.data; s.finished = s.finished || {}; s.finished[p] = { time: 200000, mistakes: 0, score: 2000, tier: 1, at: Date.now() }; s.duo = null; window.__app.overlays.length = 0; window.__app.openChallenge({ c: '1.0.250.2', p }); }, inv.q.p);
@@ -448,10 +459,18 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   // ---------- 9d. 思维链闪光 + 小樱认招 + 开局演示 + 主页入口 ----------
   {
     await ev(() => { const s = window.__store.data; s.current = null; s.seen.demo = {}; window.__app.overlays.length = 0; window.__app.startGame(0, { skipGate: true }); });
+    // 第一次演示：讲解卡一步一步讲，点「下一步」才往下走；讲的时候不计时
+    let tc = null;
+    for (let i = 0; i < 30 && !tc; i++) { await page.waitForTimeout(250); tc = await ev(() => { const T = window.__app.testHooks.teach(); return T && { n: T.stages.length, texts: T.stages.map((s) => s.text) }; }); }
+    ok(!!tc && tc.n >= 2, '入门开局：讲解卡一步一步讲「排除法」（' + (tc ? tc.n + ' 步：' + tc.texts.join(' / ').replace(/\n/g, '') : '没出来') + '）');
+    await page.waitForTimeout(1600);
+    await shot('36a_一步一步讲_第1步');
+    const el0 = await ev(() => window.__app.testHooks.board().elapsed);
+    await page.waitForTimeout(800);
+    ok((await ev(() => window.__app.testHooks.board().elapsed)) === el0, '讲的时候计时停着');
     let dm = null;
-    for (let i = 0; i < 30 && !dm; i++) { await page.waitForTimeout(250); dm = await ev(() => window.__app.testHooks.demo()); }
-    ok(!!dm, '入门开局：小樱先在盘上演示一遍「排除法」，手指指着那一格（' + (dm ? '第 ' + (dm.k + 1) + ' 格填 ' + dm.v : '没出来') + '）');
-    await shot('36_开局演示_轮到你');
+    for (let i = 0; i < 8 && !dm; i++) { await tap('teach-next', 400); dm = await ev(() => window.__app.testHooks.demo()); }
+    ok(!!dm, '讲完点「轮到我填」：手指指着那一格（' + (dm ? '第 ' + (dm.k + 1) + ' 格填 ' + dm.v : '没出来') + '）');
     if (dm) {
       await click(await ev((k) => window.__app.testHooks.cellCenter(k), dm.k), 80);
       await click(await ev((v) => window.__app.testHooks.padCenter(v), dm.v), 120);
@@ -466,6 +485,22 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     let ex = null;
     for (let g = 0; g < 400 && !ex; g++) { const s2 = S.nextStep(st, 5); if (!s2) break; if (s2.place && s2.place.k === keys[0]) ex = S.explain(st.g, s2.place.k, s2.place.v); S.applyStep(st, s2); }
     ok(!!ex && ex.show === '区块排除' && ex.level === 2 && ex.chain.length >= 1, '认招：这一格要先用区块排除才定得下（比入门难两档，小樱会说「哇」）');
+    // 区块排除第一次：先讲宫里被挡住、再讲 7 只能在同一行、再打叉、最后只剩一格
+    await ev(() => { const s = window.__store.data; s.current = null; s.seen.demo = {}; window.__app.overlays.length = 0; window.__app.startGame(2, { skipGate: true }); });
+    let tp = null;
+    for (let i = 0; i < 30 && !tp; i++) { await page.waitForTimeout(250); tp = await ev(() => { const T = window.__app.testHooks.teach(); return T && T.stages.map((s) => s.text); }); }
+    ok(!!tp && tp.length >= 4, '中等开局：「区块排除」分 ' + (tp ? tp.length : 0) + ' 步讲：' + (tp ? tp.join(' / ').replace(/\n/g, '') : ''));
+    for (let i = 0; tp && i < tp.length; i++) { await page.waitForTimeout(i ? 2200 : 2600); await shot('36b_区块排除_第' + (i + 1) + '步'); if (i < tp.length - 1) await tap('teach-next', 100); }
+    // 笔记开：数字键变成空心虚线框、小数字在它进格子以后的位置
+    await ev(() => { const s = window.__store.data; s.current = null; window.__app.overlays.length = 0; window.__app.startGame(1, { skipGate: true }); });
+    await page.waitForTimeout(600);
+    for (let i = 0; i < 8 && (await ev(() => window.__app.testHooks.teach())); i++) await tap('teach-next', 200);
+    await page.waitForTimeout(300);
+    await shot('38a_笔记关');
+    await tap('tool-note', 300);
+    ok(await ev(() => window.__app.testHooks.noteMode()), '点笔记：笔记开');
+    await shot('38b_笔记开_数字键变空心');
+    await tap('tool-note', 200);
     await ev(() => { window.__app.overlays.length = 0; window.__app.go('home'); });
     await page.waitForTimeout(400);
     ok(!!(await regionOf('home-duo')) && !!(await regionOf('home-rank')), '主页有「对战」「好友榜」');

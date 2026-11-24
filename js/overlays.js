@@ -76,7 +76,7 @@ module.exports = function (app) {
     ['mistakeLimit', '错 3 次算输', '关掉就不限次数'],
     ['autoNotes', '自动擦笔记', '填对一个数，同行同列同宫的这个笔记擦掉'],
     ['sameHighlight', '高亮相同数字', ''],
-    ['chainLight', '填对时闪过思路', '一道光走一遍：这一格是怎么想出来的'],
+    ['chainLight', '填对时显示用了哪招', '格子上飘出招名，一道光画叉走一遍怎么排除的'],
     ['reduceMotion', '简洁动效', '过场只播短的，不震屏、不闪'],
     ['showTimer', '显示计时', ''],
     ['sound', '声音', ''],

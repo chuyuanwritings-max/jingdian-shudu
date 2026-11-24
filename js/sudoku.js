@@ -325,7 +325,7 @@ function explain(grid, k, v) {
       const used = rel.length ? rel : chain.slice(-1);
       let top = fin;
       used.forEach((s) => { if (s.level > top.level) top = s; });
-      return { show: TECH_SHOW[top.tech], tech: top.tech, level: top.level, chain: used, final: fin };
+      return { show: TECH_SHOW[top.tech], tech: top.tech, level: top.level, chain: used, final: fin, all: chain.length };
     }
     let s = null;
     for (let i = 4; i < ORDER.length && !s; i++) s = ORDER[i](st); // 第 4 个起是删候选的招（区块排除……）
