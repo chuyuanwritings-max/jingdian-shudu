@@ -221,6 +221,15 @@ function draw(ctx, th, geo, m, dpr) {
     }
     ctx.globalAlpha = 1;
   }
+  // 提示 / 带练要看的是一整行、一整列或一整宫（「最后一格」）：外面描一圈金框，不然有数的格子盖住底色，看不出亮的是哪一块
+  if (m.hintCells && m.hintCells.length >= 9) {
+    let r0 = 9, r1 = -1, c0 = 9, c1 = -1;
+    for (const k of m.hintCells) { const r = Math.floor(k / 9), c = k % 9; r0 = Math.min(r0, r); r1 = Math.max(r1, r); c0 = Math.min(c0, c); c1 = Math.max(c1, c); }
+    if ((r1 - r0 + 1) * (c1 - c0 + 1) === m.hintCells.length) {
+      ui.rr(ctx, geo.x + c0 * cs + 1, geo.y + r0 * cs + 1, (c1 - c0 + 1) * cs - 2, (r1 - r0 + 1) * cs - 2, 8);
+      ctx.strokeStyle = Paper.rgba('#E0A815', 0.95); ctx.lineWidth = 3; ctx.stroke();
+    }
+  }
   // 选中的格子：一圈黄框
   if (sel >= 0) {
     const r = cellRect(geo, sel);

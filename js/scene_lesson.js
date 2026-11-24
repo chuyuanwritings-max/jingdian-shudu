@@ -309,7 +309,7 @@ module.exports = function (app) {
       const gone = seen.has(v);
       if (!gone) ui.fillRR(ctx, cx - 11, y - 11, 22, 22, 6, th.sel);
       ui.text(ctx, String(v), cx, y, 15, gone ? th.faint : th.primary, 'center', gone ? 400 : 700);
-      if (gone) { ui.stroke(ctx, th.wrong, 1.5); ctx.beginPath(); ctx.moveTo(cx - 7, y + 6); ctx.lineTo(cx + 7, y - 6); ctx.stroke(); }
+      if (gone) { ui.stroke(ctx, th.faint, 1.5); ctx.beginPath(); ctx.moveTo(cx - 7, y + 6); ctx.lineTo(cx + 7, y - 6); ctx.stroke(); }
     }
   }
 

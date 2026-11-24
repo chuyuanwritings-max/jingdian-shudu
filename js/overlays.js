@@ -142,7 +142,7 @@ module.exports = function (app) {
         ui.text(ctx, String(left || '✓'), app.W / 2, app.H / 2 - 10, 56, '#FFFFFF', 'center', 300);
         ui.text(ctx, '看完可得：' + what, app.W / 2, app.H / 2 + 50, 16, '#FFFFFF', 'center', 500);
         // 关闭 = 不要奖励
-        const on = ui.button({ id: 'ad-close', x: app.W - 64, y: app.headerY, w: 52, h: 44, onTap: () => { finished = true; app.pop(); (onSkip || (() => app.toast('没看完，就不给了')))(); } });
+        const on = ui.button({ id: 'ad-close', x: app.W - 64, y: app.headerY, w: 52, h: 44, onTap: () => { if (finished) return; finished = true; app.pop(); (onSkip || (() => app.toast('没看完，就不给了')))(); } });
         ui.fillRR(ctx, app.W - 58, app.headerY + 6, 40, 32, 16, on ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)');
         ui.icons.close(ctx, app.W - 38, app.headerY + 22, 22, '#FFFFFF');
         if (!finished && t - t0 >= total) {
@@ -158,8 +158,15 @@ module.exports = function (app) {
     draw(ctx, t, p) {
       const th = app.th;
       const m = modal(ctx, p, 300);
-      ui.text(ctx, '错了 ' + C.RULES.maxMistakes + ' 次', app.W / 2, m.y + 44, 22, th.text, 'center', 700);
-      ui.text(ctx, '这一局到这里了。想接着做吗？', app.W / 2, m.y + 78, 14, th.sub, 'center');
+      // 看得见还差多少（检验报告 A8 / C10：原来只写「错了 3 次 · 这一局到这里了」）
+      let blanks = 0, right = 0;
+      for (let k = 0; k < 81; k++) if (!b.given[k]) { blanks++; if (b.vals[k] && b.vals[k] === +b.sol[k]) right++; }
+      const left = blanks - right;
+      ui.text(ctx, left <= 10 ? '差一点！只差 ' + left + ' 格' : '还差 ' + left + ' 格', app.W / 2, m.y + 40, 22, th.text, 'center', 700);
+      const px = m.x + 36, pw = m.w - 72, py = m.y + 66;
+      ui.fillRR(ctx, px, py, pw, 10, 5, th.soft);
+      if (right) ui.fillRR(ctx, px, py, Math.max(10, pw * right / blanks), 10, 5, th.gold);
+      ui.text(ctx, '错了 ' + C.RULES.maxMistakes + ' 次 · 填对 ' + right + ' / ' + blanks, app.W / 2, m.y + 90, 13, th.sub, 'center');
       const bx = m.x + 20, bw = m.w - 40;
       const on = ui.button({ id: 'lost-revive', x: bx, y: m.y + 108, w: bw, h: 52, onTap: () => { app.pop(); handlers.revive(); } });
       ui.fillRR(ctx, bx, m.y + 108, bw, 52, 16, th.primary);

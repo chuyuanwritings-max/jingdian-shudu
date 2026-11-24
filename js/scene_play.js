@@ -71,6 +71,8 @@ module.exports = function (app) {
       store.data.next[tier] = (idx + 1) % half;
       puzzle = bank[tier][idx];
     }
+    // 带练第一局换成只用「最后一格」就能做完的小题（约 21 个空），第 1 课教过的正好够用
+    if (opts.guided) puzzle = S.encode(S.firstGamePuzzle(S.solve(S.decode(puzzle)), idx + 1));
     store.startGame(tier, mode);
     if (mode === 'normal' && !opts.guided) store.data.lastTier = tier;
     const nb = Board.create({ mode, tier, idx, date: opts.date, puzzle, guided: opts.guided });
@@ -127,7 +129,7 @@ module.exports = function (app) {
       fx.shake = { k, t0: t };
       // 两秒后自己拿掉（输了的那一下不拿：弹窗看广告复活后再拿）
       if (!r.lost) later(2000, () => { if (Board.dropWrong(b, k, v)) { fx.pops[k] = P.now(); app.sound('erase', 0.5); app.animate(300); persist(); } });
-      if (!r.lost) SK.say(['没关系～\n再看看同一行、同一列', '差一点点！\n这一格再想想', '别急，慢慢来～'][b.mistakes % 3], 'worry', 2000);
+      if (!r.lost) SK.say(['再看看同一行、同一列', '差一点，这格再想想'][b.mistakes % 2], 'worry', 2000);
       app.sound('wrong');
       app.buzz('heavy');
       app.animate(400);
@@ -140,6 +142,7 @@ module.exports = function (app) {
   }
   function onCorrect(k, v, r, t, viaHint) {
     if (hint && hint.h.place.k === k) hint = null; // 提示只在那一格填上时收起（先填别的格子不会把提示冲掉）
+    if (b.pendingHint && b.pendingHint.k === k) b.pendingHint = null;
     idleNag = false;
     if (demo && demo.k === k) demo = null; // 开局演示：照着填对了
     if (!viaHint) recognize(k, v, r, t);
@@ -199,7 +202,7 @@ module.exports = function (app) {
       fx.floats.push({ k, t0: t + 200, text: ex.show, focus: true });
       if (above(ex) && !said[ex.show]) {
         said[ex.show] = true;
-        later(380, () => SK.say('哇！你用了「' + ex.show + '」\n这是「' + S.TIERS[Math.min(5, minLevel(ex.show))].name + '」的招！', 'wow', 2400));
+        later(380, () => SK.say('哇！这是「' + S.TIERS[Math.min(5, minLevel(ex.show))].name + '」的招！', 'wow', 2400));
       } else if (!said[ex.show]) {
         said[ex.show] = true;
         later(380, () => SK.say('这步是「' + ex.show + '」～', 'happy', 1600));
@@ -212,7 +215,7 @@ module.exports = function (app) {
     // 用了比这一档更难的招：小樱「哇」一声（每局每招说一次）
     if (above(ex) && !said[ex.show]) {
       said[ex.show] = true;
-      later(380, () => SK.say('哇！你用了「' + ex.show + '」\n这是「' + S.TIERS[Math.min(5, minLevel(ex.show))].name + '」的招！', 'wow', 2800));
+      later(380, () => SK.say('哇！这是「' + S.TIERS[Math.min(5, minLevel(ex.show))].name + '」的招！', 'wow', 2400));
       const tu = store.data.techSeen || (store.data.techSeen = {});
       tu[ex.show] = (tu[ex.show] || 0) + 1;
     } else if (Board.focusUse(b, k, ex.show)) {
@@ -664,17 +667,21 @@ module.exports = function (app) {
     } else if (name === 'hint') askHint();
     persist();
   }
+  // 提示扣过次数、还没填上的那一格记进存档（b.pendingHint）：关掉气泡、退出再回来，再点「提示」免费再说一遍
+  // （检验报告 A10：点开提示没按「填上」就退出，回来提示没了、次数也扣了——第二次起是看广告换的）
   function askHint() {
     if (hint) return;
+    if (b.pendingHint && !b.vals[b.pendingHint.k]) { showHint(true); return; }
     if (b.hintsLeft > 0) { b.hintsLeft--; showHint(); }
     else app.showAd('hint', '一次提示', () => showHint());
   }
-  function showHint() {
+  function showHint(again) {
     const h = Board.findHint(b);
     if (!h) return;
-    b.hintsUsed++;
+    if (!again) b.hintsUsed++;
+    b.pendingHint = { k: h.place.k };
     const tech = h.step && h.step.tech;
-    const cells = h.step ? (tech === 'nakedSingle' ? [h.place.k] : h.step.focus || h.step.cells) : [h.place.k];
+    const cells = h.step ? (tech === 'nakedSingle' ? [h.place.k] : tech === 'fullHouse' ? S.UNITS[h.step.unit] : h.step.focus || h.step.cells) : [h.place.k];
     hint = { h, t0: P.now(), cells, lesson: T.TECH_LESSON[tech] };
     b.selected = -1;
     app.sound('hint');
@@ -684,7 +691,7 @@ module.exports = function (app) {
   }
   function fillHint() {
     const { k, v } = hint.h.place;
-    hint = null;
+    hint = null; b.pendingHint = null;
     b.selected = k;
     const r = Board.fillHint(b, k, v);
     onCorrect(k, v, r, P.now(), true);
@@ -731,10 +738,25 @@ module.exports = function (app) {
     ctx.save();
     const s = 1 + 0.08 * Math.sin(pulse * Math.PI) - (on ? 0.03 : 0);
     ctx.translate(r.x + r.w / 2, r.y + r.h / 2); ctx.scale(s, s); ctx.translate(-r.x - r.w / 2, -r.y - r.h / 2);
-    ui.fillRR(ctx, r.x, r.y, r.w, r.h, r.h / 2, all ? th.gold : th.soft);
-    if (pulse > 0 && !all) { ctx.globalAlpha = pulse * 0.6; ui.fillRR(ctx, r.x, r.y, r.w, r.h, r.h / 2, th.gold); ctx.globalAlpha = 1; }
-    const label = '本局一招 · ' + f.name + '  ' + (many && !all ? f.got.length + ' 次' : f.got.length + '/' + f.keys.length) + (all ? ' ✓' : '');
-    ui.text(ctx, label, r.x + r.w / 2, r.y + r.h / 2, Math.round(13 * kk), all ? '#FFFFFF' : th.text, 'center', 600);
+    // 小条上不写招名（检验报告 C5：黑话整局挂在屏幕上）：只画几颗圆点，用上一处点亮一颗；点开才说是哪一招
+    const n = f.keys.length, dots = !many, dr = Math.round(5 * kk), gap = Math.round(16 * kk), fs = Math.round(13 * kk);
+    ctx.font = ui.font(fs, 600);
+    const label = all ? '✓' : f.got.length + ' 次';
+    const cw = dots ? (n - 1) * gap + dr * 2 + (all ? gap : 0) : ctx.measureText(label).width;
+    const pw = Math.min(r.w, cw + 32), px = r.x + (r.w - pw) / 2;
+    ui.fillRR(ctx, px, r.y, pw, r.h, r.h / 2, all ? th.gold : th.soft);
+    if (pulse > 0 && !all) { ctx.globalAlpha = pulse * 0.6; ui.fillRR(ctx, px, r.y, pw, r.h, r.h / 2, th.gold); ctx.globalAlpha = 1; }
+    const cy = r.y + r.h / 2;
+    if (dots) {
+      let x = r.x + r.w / 2 - cw / 2 + dr;
+      for (let i = 0; i < n; i++, x += gap) {
+        ctx.beginPath(); ctx.arc(x, cy, dr, 0, Math.PI * 2);
+        if (all) { ctx.fillStyle = '#FFFFFF'; ctx.fill(); }
+        else if (i < f.got.length) { ctx.fillStyle = th.gold; ctx.fill(); }
+        else { ctx.strokeStyle = th.faint; ctx.lineWidth = 1.5; ctx.stroke(); }
+      }
+      if (all) ui.icons.check(ctx, x, cy, fs * 1.4, '#FFFFFF');
+    } else ui.text(ctx, label, r.x + r.w / 2, cy, fs, all ? '#FFFFFF' : th.text, 'center', 600);
     ctx.restore();
     if (pulse > 0) app.animate(60);
   }
@@ -762,7 +784,7 @@ module.exports = function (app) {
     const h = Board.findHint(b);
     if (!h) return null;
     const tech = h.step && h.step.tech;
-    guide = { h, t0: t, cells: h.step ? (tech === 'nakedSingle' ? [h.place.k] : h.step.focus || h.step.cells) : [h.place.k] };
+    guide = { h, t0: t, cells: h.step ? (tech === 'nakedSingle' ? [h.place.k] : tech === 'fullHouse' ? S.UNITS[h.step.unit] : h.step.focus || h.step.cells) : [h.place.k] }; // 最后一格：亮那一整行 / 列 / 宫
     return guide;
   }
   // 带练：小樱在旁边说为什么（气泡见 drawSpeech），手指先指格子、选中以后指数字键
@@ -969,21 +991,22 @@ module.exports = function (app) {
       demo = null; teach = null; idleAt = P.now(); idleNag = false; SK.clear();
       if (!b.lost) Board.dropAllWrong(b);
       else later(500, () => showLost()); // 输了以后退出 / 被杀掉再「继续」：重新弹那张弹窗，不是一盘死棋
+      if (!b.lost && b.pendingHint && !b.vals[b.pendingHint.k]) later(500, () => showHint(true)); // 上次点开没填的提示：回来接着说，不再扣
       // 新的一局：小樱说这盘练哪一招；这一招还没在盘上演示过，就先演示一遍再让你填（Cc：「我进来之后，系统也没教我」）
-      if (versus()) { if (b.elapsed < 1000) setTimeout(() => SK.say('开始！你用的每一招\n我都给你记着～', 'happy', 2200), 450); }
+      if (versus()) { /* 对战开局不说话（检验报告 C6：不改变操作的话都删） */ }
       else if (b.focus && !b.focusShown && !b.guided) {
         b.focusShown = true;
         const f = b.focus, seen = store.data.seen.demo || (store.data.seen.demo = {});
         const basic = (T.LESSONS.find((x) => x.id === f.lesson) || {}).group === 'basic';
         if (!seen[f.lesson] && basic) {
           b.focusShown = false; // 讲完（点到「轮到我填」）才算讲过：中途退出回来还会讲
-          setTimeout(() => { if (app.scene === app.scenes.play && !startDemo()) SK.say('这盘练「' + f.name + '」\n我陪你！', 'happy', 2600); }, 450);
+          setTimeout(() => { if (app.scene === app.scenes.play && !startDemo()) SK.say('这盘练「' + f.name + '」', 'happy', 2200); }, 450);
         } else if (!basic && !seen[f.lesson]) {
           // 进阶招不用学（Cc）：不自动演示，只说一句，想看点小条
           seen[f.lesson] = true; store.save();
-          setTimeout(() => SK.say('这盘会用到「' + f.name + '」\n想看演示就点上面的小条～', 'happy', 3000), 450);
-        } else setTimeout(() => SK.say('这盘练「' + f.name + '」' + (f.keys.length > 9 ? '\n全靠它啦' : '\n有 ' + f.keys.length + ' 处要用它'), 'happy', 2600), 450);
-      } else if (!b.guided && b.elapsed < 1000) setTimeout(() => SK.say('加油！我在这儿看着～', 'happy', 2000), 450);
+          setTimeout(() => SK.say('有新招，点上面小条看', 'happy', 2600), 450);
+        } else setTimeout(() => SK.say('这盘练「' + f.name + '」', 'happy', 2200), 450);
+      }
     },
     leave() { persist(); },
     onHide() { if (b && !b.done && !winAt) { paused = true; persist(); app.redraw(); } },
@@ -991,7 +1014,7 @@ module.exports = function (app) {
       if (fx) { runEvents(t); if (fx.sparks.length) stepSparks(dt); }
       if (!b || paused || winAt || b.lost || teach || app.overlays.length) return; // 讲解的时候不计时
       b.elapsed += dt;
-      if (!idleNag && t - idleAt > 45000 && !SK.busy(t)) { idleNag = true; idleAt = t; SK.say('卡住了？\n点「提示」我教你～', 'think', 3000); app.animate(100); }
+      if (!idleNag && t - idleAt > 45000 && !SK.busy(t)) { idleNag = true; idleAt = t; SK.say('卡住了？点「提示」', 'think', 3000); app.animate(100); }
       const sec = Math.floor(b.elapsed / 1000);
       if (sec !== lastSec) { lastSec = sec; app.redraw(); }
       saveTimer += dt;
@@ -1052,13 +1075,13 @@ module.exports = function (app) {
       if (SK.busy(t)) app.animate(60);
 
       // 工具 + 数字键
-      const hintBadge = b.hintsLeft > 0 ? { text: String(b.hintsLeft), color: th.primary } : { text: '▶', color: th.gold };
+      const hintBadge = b.pendingHint && !b.vals[b.pendingHint.k] ? { text: '1', color: th.primary } : b.hintsLeft > 0 ? { text: String(b.hintsLeft), color: th.primary } : { text: '▶', color: th.gold };
       app.drawTools(ctx, L.toolsY, L.toolsH, [
         // 撤销、橡皮去掉了（Cc：「橡皮擦功能没用，撤销功能也没用」——填错的数两秒自己拿掉，笔记再点一次那个数就消）
         // 笔记放右手边（Cc：「把笔记跟提示的位置换一下……Sudoku 笔记放的位置就是右手边」）
         { id: 'hint', label: '提示', icon: 'bulb', badge: hintBadge, onTap: () => tool('hint') },
         { id: 'note', label: '笔记', icon: 'pencil', active: noteMode, badge: { text: noteMode ? '开' : '关', color: noteMode ? th.primary : th.faint }, onTap: () => tool('note') },
-      ], L.toolsX, L.toolsW);
+      ].filter((it) => !(b.guided && it.id === 'note')), L.toolsX, b.guided ? L.toolsW / 2 : L.toolsW); // 带练第一局用不上笔记：先不摆（一次只给一样）
       app.drawPad(ctx, { x: L.padX, w: L.padW, y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone, active: selDigit });
       // 讲解时挡住棋盘和按键，只能点气泡里的「下一步」
       if (teach && !paused) ui.button({ id: 'teach-block', x: 0, y: L.infoY, w: app.W, h: app.H - L.infoY, silent: true });

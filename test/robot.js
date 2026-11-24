@@ -81,6 +81,13 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await tap('lf-guided', 600);
   let gb = await ev(() => { const b = window.__app.testHooks.board(); return { guided: b.guided, left: b.guideLeft, tier: b.tier }; });
   ok(gb.guided && gb.left === 3 && gb.tier === 0, '学完规则 → 入门带练局（前 3 步带着走）');
+  {
+    const SU = require(path.join(__dirname, '..', 'js', 'sudoku.js'));
+    const pz = await ev(() => window.__app.testHooks.board().puzzle);
+    const g = SU.decode(pz), blanks = g.filter((x) => !x).length;
+    ok(SU.fullHouseOnly(g) && blanks >= 15 && blanks <= 30, '带练第一局只用「最后一格」就能做完（' + blanks + ' 个空，第 1 课教过的正好够用）');
+    ok(!(await regionOf('tool-note')), '带练第一局不摆「笔记」');
+  }
   for (let i = 0; i < 3; i++) {
     await page.waitForTimeout(250);
     const g = await ev(() => { const x = window.__app.testHooks.guide(); return x ? { k: x.h.place.k, v: x.h.place.v } : null; });
@@ -239,6 +246,18 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   ok((await ev(() => window.__app.overlays.length)) === 1, '提示用完 → 弹广告');
   await page.waitForTimeout(3600);
   ok(!!(await ev(() => window.__app.testHooks.hint())), '看完广告给提示');
+  // 提示没填就退出：回来接着说，不再扣、不再弹广告（检验报告 A10）
+  {
+    const hk = await ev(() => window.__app.testHooks.hint().h.place.k);
+    await tap('hdr-back', 400);
+    await tap('home-main', 900);
+    const back = await ev(() => { const x = window.__app.testHooks.hint(); return { k: x ? x.h.place.k : -1, ads: window.__app.overlays.length, used: window.__app.testHooks.board().hintsUsed }; });
+    ok(back.k === hk && back.ads === 0, '提示没填就退出 → 回来小樱接着说同一格，不扣、不弹广告');
+    await tap('speech-close', 300);
+    await click(await G.tool(0), 400);
+    const again = await ev(() => ({ on: !!window.__app.testHooks.hint(), ads: window.__app.overlays.length, used: window.__app.testHooks.board().hintsUsed }));
+    ok(again.on && again.ads === 0 && again.used === back.used, '关掉气泡再点「提示」：免费再说一遍');
+  }
   await tap('hint-fill', 300);
   // 中途退出 → 首页有「继续」→ 刷新页面也还在
   await tap('hdr-back', 400);

@@ -430,6 +430,33 @@ function makePuzzle(rand, tier) {
   return { puzzle: g, solution: sol, givens, steps: r.steps, hardSteps: r.hardSteps };
 }
 
+// 新人带练第一局：只用「最后一格」（某一行 / 列 / 宫只剩一个空格）就能做完——第 1 课只教了这一招
+// （检验报告 C7：原来的入门题 150 道里 132 道开局第一步就得用第 2 课才教的排除法）。从一个解出发随机挖空，挖到挖不动为止（约 21 格）
+function fullHouseOnly(g0) {
+  const g = g0.slice();
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const u of UNITS) {
+      const empty = u.filter((k) => !g[k]);
+      if (empty.length !== 1) continue;
+      let m = 0;
+      u.forEach((k) => { if (g[k]) m |= bit(g[k]); });
+      for (let d = 1; d <= 9; d++) if (!(m & bit(d))) { g[empty[0]] = d; break; }
+      changed = true;
+    }
+  }
+  return g.every(Boolean);
+}
+function firstGamePuzzle(sol, seed) {
+  const g = sol.slice(), rand = rng(seed);
+  for (const k of shuffle(Array.from({ length: 81 }, (_, i) => i), rand)) {
+    const v = g[k];
+    g[k] = 0;
+    if (!fullHouseOnly(g)) g[k] = v;
+  }
+  return g;
+}
+
 // 题库存成 81 个字符的字符串（0 = 空）
 const encode = (g) => g.join('');
 const decode = (s) => Array.from(s, (ch) => +ch);
@@ -459,24 +486,24 @@ function hintFor(grid, solution) {
   }
   return { step, place: target, text: hintText(step, target), cells: step ? step.cells : [target.k] };
 }
+// 对局里的提示：一行、14 字以内，不写招名、不写「宫」（检验报告 C5）；要看的地方盘上亮着，招名在「学这招 ›」里
 function hintText(step, place) {
-  if (!step) return '这一步要用更难的招，直接告诉你这一格';
-  const u = step.unit;
-  const where = u === undefined ? '' : '这一' + UNIT_NAME[unitKind(u)];
+  if (!step) return '这一格直接告诉你';
+  const d = step.digit;
   switch (step.tech) {
-    case 'fullHouse': return '最后一格：' + where + '只剩一个空格了，缺哪个数？';
+    case 'fullHouse': return '亮着的 9 格只缺一个数';
     case 'hiddenBox':
-    case 'hiddenLine': return '排除法：在' + where + '里，' + step.digit + ' 只能放在一个地方';
-    case 'nakedSingle': return '唯一候选：亮着的这一格，只剩一个数能填';
+    case 'hiddenLine': return '亮着的空格里，' + d + ' 只能放一处';
+    case 'nakedSingle': return '这一格只剩一个数能填';
     case 'pointing':
-    case 'claiming': return '区块排除：' + where + '里的 ' + step.digit + ' 都挤在一条线上，线上别处就不能是 ' + step.digit;
+    case 'claiming': return '亮着的格子里，' + d + ' 只在一条线上';
     case 'nakedPair':
-    case 'hiddenPair': return '数对：这两格只能是 ' + step.digits.join(' 和 ') + '，别的格就不能是它们';
+    case 'hiddenPair': return '这两格只能是 ' + step.digits.join(' 和 ');
     case 'nakedTriple':
-    case 'hiddenTriple': return '三数组：这三格只能是 ' + step.digits.join('、') + '，别的格就不能是它们';
-    case 'xWing': return 'X-Wing：' + step.digit + ' 在两行里只出现在同样两列，这两列别处就不能是 ' + step.digit;
-    case 'swordfish': return '剑鱼：' + step.digit + ' 在三行里只出现在同样三列';
-    case 'xyWing': return 'XY-Wing：亮着的三格夹住了 ' + step.digit;
+    case 'hiddenTriple': return '这三格只能是 ' + step.digits.join('、');
+    case 'xWing':
+    case 'swordfish': return d + ' 只能在亮着的几格里';
+    case 'xyWing': return '亮着的三格夹住了 ' + d;
     default: return '看亮着的地方';
   }
 }
@@ -485,5 +512,5 @@ module.exports = {
   focusCells, explain, singleAt, TECH_SHOW,
   ROW, COL, BOX, UNITS, UNITS_OF, PEERS, ALL, bit, popcount, digits, TIERS, TECH,
   makeState, place, applyStep, nextStep, grade, countSolutions, solve, rng, shuffle,
-  randomSolution, makePuzzle, encode, decode, hintFor, candMask, MIN_GIVENS,
+  randomSolution, makePuzzle, firstGamePuzzle, fullHouseOnly, encode, decode, hintFor, candMask, MIN_GIVENS,
 };

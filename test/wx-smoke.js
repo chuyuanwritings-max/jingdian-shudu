@@ -48,3 +48,22 @@ for (let i = 0; i < 3000; i++) {
 run(100);
 console.log('微信环境跑通：乱点 3000 下没报错，画图调用 ' + calls.size + ' 种，存档 ' + Object.keys(store).length + ' 个键');
 if (!handlers.down || !calls.has('fillText')) throw new Error('没画出东西或没注册触摸');
+
+// 包体：按 project.config.json 的忽略表算进微信包的文件，超过主包上限就报错（检验报告 A3：上限要写进冒烟测试）
+{
+  const fs = require('fs');
+  const root = path.join(__dirname, '..');
+  const ign = (JSON.parse(fs.readFileSync(path.join(root, 'project.config.json'), 'utf8')).packOptions || {}).ignore || [];
+  const skip = (rel, dir) => rel.startsWith('.') || rel === 'node_modules' || ign.some((i) => (i.type === 'folder') === dir && i.value === rel);
+  let bytes = 0, files = 0;
+  const walk = (d, pre) => fs.readdirSync(d, { withFileTypes: true }).forEach((e) => {
+    const rel = pre + e.name;
+    if (skip(rel, e.isDirectory())) return;
+    if (e.isDirectory()) walk(path.join(d, e.name), rel + '/');
+    else { bytes += fs.statSync(path.join(d, e.name)).size; files++; }
+  });
+  walk(root, '');
+  const LIMIT = 3.5 * 1024 * 1024;
+  console.log('微信包：' + files + ' 个文件，' + (bytes / 1024 / 1024).toFixed(2) + ' MB（上限 3.5 MB）');
+  if (bytes > LIMIT) throw new Error('主包超过 3.5 MB');
+}

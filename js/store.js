@@ -82,8 +82,9 @@ function recordWin(b) {
     s.won++;
     if (b.mistakes === 0 && b.revives === 0) s.perfect++;
     s.total += b.elapsed;
-    if (!s.best || b.elapsed < s.best) { s.best = b.elapsed; b.newBest = true; }
-    if (b.score > s.bestScore) { s.bestScore = b.score; b.newBestScore = true; }
+    // 带练第一局是只有约 21 个空的小题：不进最快纪录、最高分
+    if (!b.guided && (!s.best || b.elapsed < s.best)) { s.best = b.elapsed; b.newBest = true; }
+    if (!b.guided && b.score > s.bestScore) { s.bestScore = b.score; b.newBestScore = true; }
     s.streak++;
     s.bestStreak = Math.max(s.bestStreak, s.streak);
     P.uploadScore('best_' + S.TIERS[b.tier].id, s.bestScore, { time: s.best });
