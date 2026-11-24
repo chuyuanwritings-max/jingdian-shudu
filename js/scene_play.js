@@ -674,7 +674,7 @@ module.exports = function (app) {
     hint = { h, t0: P.now(), cells, lesson: T.TECH_LESSON[tech] };
     b.selected = -1;
     app.sound('hint');
-    SK.setMood('think', 1600);
+    SK.clear(); SK.setMood('think', 2400);
     app.animate(300);
     persist();
   }
@@ -757,30 +757,66 @@ module.exports = function (app) {
     const target = b.selected === k ? { x: L.padX + (v - 0.5) * L.keyW, y: L.padY + L.padH / 2 } : (() => { const r = DB.cellRect(geo, k); return { x: r.x + r.s / 2, y: r.y + r.s / 2 }; })();
     ui.icons.hand(ctx, target.x + 4, target.y + 6 + Math.sin(t / 220) * 5, 44, th.text);
   }
-  function drawHintCard(ctx, th, t) {
-    const p = Math.min(1, (t - hint.t0) / 220);
-    const x = L.hint.x, w = L.hint.w, h = L.hint.h;
-    const y = L.hint.y + (1 - ui.ease.out(p)) * 10;
-    ui.button({ id: 'hint-card', x, y, w, h }); // 挡住下面的按钮
+  // ---------- 提示：小樱走过去说（Cc：「点击提示时，不要出现底部的提示卡。直接让小樱站到它想提示的那个宫或者单元格旁边，
+  // 然后把提示卡里对话气泡的内容，直接让小樱说出口」）----------
+  let skPos = null; // { from, to, t0, key, cur }
+  function hintBox() {
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    hint.cells.forEach((k) => { const r = DB.cellRect(geo, k); x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y); x1 = Math.max(x1, r.x + r.s); y1 = Math.max(y1, r.y + r.s); });
+    return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+  }
+  // 站在要看的那一块旁边：右边有地方站右边，不然站左边；一整行那么宽就站上面或下面
+  function hintSpot(sw) {
+    const B = hintBox(), gx0 = geo.x, gx1 = geo.x + geo.size, gy0 = geo.y, gy1 = geo.y + geo.size;
+    const cy = (y) => Math.max(gy0 - sw * 0.3, Math.min(gy1 - sw * 0.7, y));
+    if (gx1 - B.x1 >= sw * 0.8) return { x: B.x1 + 2, y: cy(B.cy - sw / 2), w: sw, h: sw };
+    if (B.x0 - gx0 >= sw * 0.8) return { x: B.x0 - sw - 2, y: cy(B.cy - sw / 2), w: sw, h: sw };
+    const x = Math.max(gx0, Math.min(gx1 - sw, B.cx - sw / 2));
+    return { x, y: B.y0 - sw - 2 >= gy0 - sw * 0.5 ? B.y0 - sw - 2 : B.y1 + 2, w: sw, h: sw };
+  }
+  // 小樱这一帧在哪：平常在右上角，出提示走过去，填上了走回来（0.38 秒滑过去）
+  function sakuraRect(t) {
+    const home = LY.rect('play.sakura');
+    const go = hint && !paused;
+    const to = go ? hintSpot(home.w) : home, key = go ? 'hint' + hint.t0 : 'home';
+    if (!skPos || skPos.key !== key) skPos = { from: skPos && skPos.cur ? skPos.cur : home, t0: t, key };
+    const p = ui.ease.out(Math.min(1, (t - skPos.t0) / 380)), f = skPos.from;
+    const cur = { x: f.x + (to.x - f.x) * p, y: f.y + (to.y - f.y) * p, w: f.w + (to.w - f.w) * p, h: f.h + (to.h - f.h) * p };
+    skPos.cur = cur;
+    if (p < 1) app.animate(60);
+    return cur;
+  }
+  // 小樱的气泡：放在那一块和小樱的上面（上面没地方就放下面），不挡要看的格子；里面一个「填上」
+  function drawHintBubble(ctx, th, t, sk) {
+    const p = Math.min(1, (t - hint.t0 - 300) / 200);
+    if (p <= 0) { app.animate(60); return; }
+    const B = hintBox(), bw = Math.min(app.W - 24, 300), pad = 12, lh = 19, fs = 14, btnW = 72, btnH = 32;
+    const n = ui.wrap(ctx, hint.h.text, 0, 0, bw - pad * 2, fs, lh, null, 600);
+    const bh = pad + n * lh + 8 + btnH + 8;
+    const top = Math.min(B.y0, sk.y), bot = Math.max(B.y1, sk.y + sk.h);
+    const roomUp = top - 10 - L.infoY, roomDown = L.padY - 6 - (bot + 10);
+    const up = roomUp >= bh || roomUp >= roomDown;
+    const by = up ? Math.max(L.infoY, top - 10 - bh) : Math.min(bot + 10, L.padY - 6 - bh);
+    const scx = sk.x + sk.w / 2, bx = Math.max(12, Math.min(app.W - 12 - bw, scx - bw / 2));
+    ui.button({ id: 'hint-card', x: bx, y: by, w: bw, h: bh }); // 挡住底下的格子和按钮
     ctx.save();
-    ctx.globalAlpha = p;
-    ui.card(ctx, x, y, w, h, 14, th);
-    ui.icons.bulb(ctx, x + 22, y + h / 2, 22, th.gold);
-    const btnW = 64;
-    const textW = w - 44 - btnW - (hint.lesson ? 50 : 0) - 8;
-    const n = ui.wrap(ctx, hint.h.text, 0, 0, textW, 13, 18, null);
-    ui.wrap(ctx, hint.h.text, x + 40, y + h / 2 - (n * 18) / 2, textW, 13, 18, th.text);
-    // 「学这招」：去对应的那一课
-    if (hint.lesson) {
-      const lx = x + w - btnW - 56;
-      ui.button({ id: 'hint-learn', x: lx, y: y + 12, w: 48, h: 40, onTap: () => { persist(); app.go('lesson', { id: hint.lesson, returnTo: 'play' }); } });
-      ui.text(ctx, '学这招', lx + 24, y + h / 2, 12, th.primary, 'center', 600);
-    }
-    const on = ui.button({ id: 'hint-fill', x: x + w - btnW - 8, y: y + 14, w: btnW, h: 36, onTap: fillHint });
-    ui.fillRR(ctx, x + w - btnW - 8, y + 14, btnW, 36, 12, on ? th.sel : th.soft);
-    ui.text(ctx, '填上', x + w - btnW / 2 - 8, y + h / 2, 14, th.primary, 'center', 600);
+    // 不透明地弹出来（淡入会把底下的小条、飘字透出来）：从小樱那边放大到 1
+    const sc = 0.85 + 0.15 * ui.ease.back(p), ox = Math.max(bx, Math.min(bx + bw, scx)), oy = up ? by + bh : by;
+    ctx.translate(ox, oy); ctx.scale(sc, sc); ctx.translate(-ox, -oy);
+    ui.fillRR(ctx, bx, by, bw, bh, 14, th.card);
+    ui.rr(ctx, bx, by, bw, bh, 14); ctx.strokeStyle = '#E07C96'; ctx.lineWidth = 1.5; ctx.stroke();
+    // 小尾巴指向小樱
+    const tx = Math.max(bx + 18, Math.min(bx + bw - 18, scx)), ey = up ? by + bh : by, d = up ? 1 : -1;
+    ctx.fillStyle = th.card; ctx.beginPath(); ctx.moveTo(tx - 7, ey - d); ctx.lineTo(tx, ey + 9 * d); ctx.lineTo(tx + 7, ey - d); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(tx - 7, ey); ctx.lineTo(tx, ey + 9 * d); ctx.lineTo(tx + 7, ey); ctx.stroke();
+    ui.wrap(ctx, hint.h.text, bx + pad, by + pad, bw - pad * 2, fs, lh, th.text, 600);
+    const fx0 = bx + bw - pad - btnW, fy0 = by + bh - 8 - btnH;
+    const on = ui.button({ id: 'hint-fill', x: fx0, y: fy0, w: btnW, h: btnH, onTap: fillHint });
+    ui.fillRR(ctx, fx0, fy0, btnW, btnH, 10, on ? th.sel : th.primary);
+    ui.text(ctx, '填上', fx0 + btnW / 2, fy0 + btnH / 2, 14, '#FFFFFF', 'center', 700);
     ctx.restore();
   }
+
 
   // 数字键（教学也用）：opts = { y, h, onPress, counts, noteMode, disabled, highlight }
   const PAD_TILT = [-3, 2, -2, 3, -1, 2, -3, 1, 3]; // 每个键歪几度
@@ -844,20 +880,22 @@ module.exports = function (app) {
     items.forEach((it, i) => {
       const x = tx + i * w, cx = x + w / 2;
       const on = ui.button({ id: 'tool-' + it.id, x, y, w, h, onDown: it.onTap });
-      if (on) ui.fillRR(ctx, cx - 30, y + 2, 60, h - 4, 14, th.soft);
+      // 图标、字跟着框的高缩放（Cc 把工具行拉小了：「把它们也变小一点……现在有点大」）
+      const is = Math.min(26, h * 0.42), hw = Math.min(30, w / 2 - 2), fs = h >= 56 ? 12 : 11;
+      if (on) ui.fillRR(ctx, cx - hw, y + 2, hw * 2, h - 4, 12, th.soft);
       if (it.highlight) {
         ctx.globalAlpha = 0.5 + 0.5 * Math.sin(app.now / 220);
-        ui.fillRR(ctx, cx - 30, y + 2, 60, h - 4, 14, th.soft);
+        ui.fillRR(ctx, cx - hw, y + 2, hw * 2, h - 4, 12, th.soft);
         ctx.globalAlpha = 1;
       }
       const c = it.active ? th.primary : th.sub;
-      ui.icons[it.icon](ctx, cx, y + 22, 26, c);
-      ui.text(ctx, it.label, cx, y + 48, 12, c, 'center', it.active ? 600 : 400);
+      ui.icons[it.icon](ctx, cx, y + h * 0.36, is, c);
+      ui.text(ctx, it.label, cx, y + h * 0.79, fs, c, 'center', it.active ? 600 : 400);
       if (it.badge) {
         ctx.font = ui.font(10, 700);
-        const bw = Math.max(18, ctx.measureText(it.badge.text).width + 10);
-        ui.fillRR(ctx, cx + 8, y + 4, bw, 16, 8, it.badge.color);
-        ui.text(ctx, it.badge.text, cx + 8 + bw / 2, y + 12.5, 10, '#FFFFFF', 'center', 700);
+        const bw = Math.max(16, ctx.measureText(it.badge.text).width + 8);
+        ui.fillRR(ctx, cx + is * 0.3, y + 2, bw, 15, 7.5, it.badge.color);
+        ui.text(ctx, it.badge.text, cx + is * 0.3 + bw / 2, y + 10, 10, '#FFFFFF', 'center', 700);
       }
     });
   };
@@ -912,8 +950,6 @@ module.exports = function (app) {
       });
       drawInfo(ctx, th);
       drawFocus(ctx, th, t);
-      SK.draw(ctx, LY.rect('play.sakura'), t, th);
-      if (SK.busy(t)) app.animate(60);
 
       // 棋盘（按下就选中）
       ui.button({ id: 'board', x: geo.x, y: geo.y, w: geo.size, h: geo.size, silent: true, onDown: (x, y) => select(DB.cellAt(geo, x, y)) });
@@ -950,17 +986,22 @@ module.exports = function (app) {
         ui.text(ctx, f.text, r.x + r.s / 2, r.y - 6 - ui.ease.out(p) * 26 - (f.focus ? 16 : 0), f.focus ? 13 : 14, f.focus ? th.gold : th.primary, 'center', 700);
         ctx.globalAlpha = 1;
       }
+      // 小樱画在棋盘上面（出提示时她会走到棋盘上）
+      const skr = sakuraRect(t);
+      SK.draw(ctx, skr, t, th, { noBubble: !!hint });
+      if (SK.busy(t)) app.animate(60);
 
       // 工具 + 数字键
       const hintBadge = b.hintsLeft > 0 ? { text: String(b.hintsLeft), color: th.primary } : { text: '▶', color: th.gold };
       app.drawTools(ctx, L.toolsY, L.toolsH, [
         // 撤销、橡皮去掉了（Cc：「橡皮擦功能没用，撤销功能也没用」——填错的数两秒自己拿掉，笔记再点一次那个数就消）
-        { id: 'note', label: '笔记', icon: 'pencil', active: noteMode, badge: { text: noteMode ? '开' : '关', color: noteMode ? th.primary : th.faint }, onTap: () => tool('note') },
+        // 笔记放右手边（Cc：「把笔记跟提示的位置换一下……Sudoku 笔记放的位置就是右手边」）
         { id: 'hint', label: '提示', icon: 'bulb', badge: hintBadge, onTap: () => tool('hint') },
+        { id: 'note', label: '笔记', icon: 'pencil', active: noteMode, badge: { text: noteMode ? '开' : '关', color: noteMode ? th.primary : th.faint }, onTap: () => tool('note') },
       ], L.toolsX, L.toolsW);
       app.drawPad(ctx, { x: L.padX, w: L.padW, y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone, active: selDigit });
       if (teach) drawTeachCard(ctx, th, t);
-      else if (hint) drawHintCard(ctx, th, t);
+      else if (hint) drawHintBubble(ctx, th, t, skr);
       else if (b.guided && b.guideLeft > 0 && !winAt && !paused) drawGuide(ctx, th, t);
       // 通关第一段：棋盘以外硬切成近黑（点一下直接进第二段）
       if (party && !party.playing) {

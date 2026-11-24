@@ -182,7 +182,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await click(await G.cell(given), 200);
   await shot('14_点一格_相同数字亮黄');
   // 笔记：开笔记，在一格记两个数
-  await click(await G.tool(0), 80);
+  await click(await G.tool(1), 80);
   const e0 = b.vals.findIndex((v) => !v);
   await click(await G.cell(e0), 40);
   const w0 = (+b.sol[e0] % 9) + 1, w1 = (w0 % 9) + 1 === +b.sol[e0] ? (w0 % 9) + 2 : (w0 % 9) + 1;
@@ -199,7 +199,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   ok(notes0 === ((1 << w0) | (1 << w1)), '再点一下格子，就能接着记第二个数');
   await click(await G.cell(e0), 40);
   await shot('16_笔记');
-  await click(await G.tool(0), 80);
+  await click(await G.tool(1), 80);
   // 在记了笔记的格子填错：红字留两秒，自己拿掉，笔记还在
   await click(await G.pad(w0), 120);
   await shot('15_填错_红字');
@@ -222,7 +222,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   b = await G.board();
   ok(b.vals[e1] === v1 && b.score > 0 && b.notes[e1] === 0, '填对得分 ' + b.score + '，这一格的笔记清掉');
   // 提示：第一次免费
-  await click(await G.tool(1), 400);
+  await click(await G.tool(0), 400);
   await shot('18_提示_先说用哪招');
   const h = await ev(() => { const x = window.__app.testHooks.hint(); return x ? { text: x.h.text, k: x.h.place.k, v: x.h.place.v } : null; });
   ok(!!h, '提示：' + (h && h.text));
@@ -230,7 +230,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   b = await G.board();
   ok(h && b.vals[h.k] === h.v, '提示第二步：直接填上');
   // 第二次提示要看广告
-  await click(await G.tool(1), 300);
+  await click(await G.tool(0), 300);
   await shot('19_提示_看广告');
   ok((await ev(() => window.__app.overlays.length)) === 1, '提示用完 → 弹广告');
   await page.waitForTimeout(3600);

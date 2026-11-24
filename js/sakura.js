@@ -75,7 +75,7 @@ function face(ctx, cx, cy, r, m, t) {
 }
 
 // 画小樱 + 气泡（气泡往左边伸，不挡棋盘）。rect = 布局表 play.sakura
-function draw(ctx, rect, t, th) {
+function draw(ctx, rect, t, th, opts) {
   if (mood !== 'idle' && t > moodUntil) mood = 'idle';
   const r = Math.min(rect.w, rect.h) * 0.36, cx = rect.x + rect.w / 2;
   // 平常轻轻呼吸；说话、换表情时跳一下
@@ -90,7 +90,7 @@ function draw(ctx, rect, t, th) {
     else face(ctx, cx, cy, r, mood, t);
   } else face(ctx, cx, cy, r, mood, t);
   // 气泡
-  if (line && t - line.t0 < line.dur + 300) {
+  if (line && !(opts && opts.noBubble) && t - line.t0 < line.dur + 300) {
     const p = Math.min(1, (t - line.t0) / 160), fade = t - line.t0 > line.dur ? 1 - (t - line.t0 - line.dur) / 300 : 1;
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(p, fade));
