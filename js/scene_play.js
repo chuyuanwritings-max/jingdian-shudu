@@ -168,15 +168,17 @@ module.exports = function (app) {
       });
     });
     // 同一步撞在一起：只响一个声音、只震一次。优先级：通关 > 数字填完 > 行列宫
-    // 震动照《震动手感规矩 1.0》：填对本身是按下那一下 light。填满行 / 列 / 宫是规矩第 3 条的例外——波浪
+    // 震动照《震动手感规矩 1.1》：填对本身是按下那一下 light。填满行 / 列 / 宫是规矩第 3 条的例外——波浪
     // （Cc 11-24「像波浪一般的震动」，11-25「改回波浪」）：光每往外漫一圈（45 毫秒一圈）跟着轻震一下，最外一圈 medium。
     // 中心那一格不另震（按下那下就是起点）。两下之间 45 毫秒 > 40；和别的震动撞在同一刻时 app.buzz 合成一下。
-    // 数字填齐（digitBurst）没有光波、是一起闪：保持一下 medium。通关 heavy
+    // 数字填齐（digitBurst）没有光波、是一起闪：三下 medium·medium·light。通关三下 heavy·heavy·medium（规矩 1.1 第 3 条）
     if (r.units.length && !r.win && !r.digitDone) {
       later(220, () => app.sound('unit'));
       let far = 0;
       r.units.forEach((u) => S.UNITS[u].forEach((x) => { far = Math.max(far, Math.abs(S.ROW(x) - S.ROW(k)) + Math.abs(S.COL(x) - S.COL(k))); }));
-      for (let d = 1; d <= far; d++) later(220 + d * 45, () => app.buzz(d === far ? 'medium' : 'light'));
+      const steps = [];
+      for (let d = 1; d <= far; d++) steps.push([220 + d * 45, d === far ? 'medium' : 'light']);
+      app.buzzSeq(steps); // 走 buzzSeq：接着又成了一串（数字填齐、通关）时，这串没震完的让位，不叠
     }
     if (r.digitDone && !r.win) digitBurst(v, land);
     app.animate(1200);
@@ -536,7 +538,7 @@ module.exports = function (app) {
       cells.forEach((x) => sparkAt(x, full ? 3 : 2));
       if (full) fx.boardShake = { t0: t, dur: 6 * F, amp: 2 };
       app.sound('bell' + Math.min(8, b.digitCount));
-      app.buzz('medium'); // 9 个齐了：一下 medium（规矩：一个数字全填完 = 小成功）
+      app.buzzWin3('medium', 'medium', 'light'); // 9 个齐了 = 小成功：三下「嘣嘣嘣」（规矩 1.1 第 3 条）
     });
     fx.keyDone[v] = tS;
     app.animate(tEnd - P.now() + 100);
@@ -609,7 +611,7 @@ module.exports = function (app) {
     const head = b.mode === 'daily' ? '今日完成' : won ? '你赢了' : b.newBest && !firstTier ? '新纪录 ' + app.fmt(b.elapsed) : firstTier ? '首次通关 · ' + tn : '完成！';
     const WIN = C.CUT.win, F = 1000 / 60;
     party = { t0: t, last, full, head, sub: app.fmt(b.elapsed) + ' · ' + b.score + ' 分' };
-    app.buzz('heavy');
+    app.buzzWin3('heavy', 'heavy', 'medium'); // 过关 = 大成功：三下（第一下和按下的 light 同一帧，合成 heavy）
     const land = t + 150;
     if (full) {
       // 波浪：按「隔几格」算（切比雪夫距离），每圈 6 帧

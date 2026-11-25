@@ -207,7 +207,7 @@ module.exports = { dropWrong, dropAllWrong, focusUse, create, input, erase, undo
 __def("js/config.js", function (module, exports, require) {
 // 所有能调的数都在这里：配色、计分、广告、每日挑战。改数不用动别的文件。
 
-const VERSION = '0.14.2';
+const VERSION = '0.14.3';
 
 // 主题：颜色和质地配在一起，一个主题就是一整套（Cc 0.3：「颜色和质地其实就是选主题的，是混合在一起的……就是几个主题」）。
 // 前三套免费，后四套在结算页看视频解锁。以后加风格主题（赛博朋克、蒸汽朋克……）也是往这里加一项。
@@ -427,7 +427,8 @@ module.exports = function (app) {
     const cs = createCutscene({
       ctx: app.ctx, width: app.W, height: app.H, images, timeline: tame(timeline), short,
       onSfx: (name) => {
-        if (name === 'dong' || name === 'lamp') app.buzz('heavy');
+        // 咚 / 灯：heavy。但离刚才那串「成了」不到 0.6 秒（短版通关第二段紧跟在三下后面）就不另震，免得连成四下（规矩 1.1：一串最多三下）
+        if ((name === 'dong' || name === 'lamp') && P.now() - app.buzzSeqAt > 600) app.buzz('heavy');
         app.sound(name, name === 'hum' ? 0.35 : undefined);
       },
       onEnd: () => setTimeout(finish, 0),
@@ -1901,7 +1902,7 @@ ui.setTexture((ctx, x, y, w, h) => Paper.fill(ctx, app.th.cardTexture, app.dpr, 
 app.redraw = () => { app.dirty = true; };
 app.animate = (ms) => { app.animUntil = Math.max(app.animUntil, P.now() + ms); };
 app.sound = (name, vol) => { if (store.data.settings.sound) P.sound(name, vol); };
-// 震动（共用《震动手感规矩 1.0》）：每次有效点击 light，小成功 medium，犯错 / 过关 heavy。
+// 震动（共用《震动手感规矩 1.1》）：每次有效点击 light；成了震三下（数字填齐 medium·medium·light，通关 heavy·heavy·medium）；犯错一下 heavy。
 // 同一帧里撞在一起的只震最重的一下；两次之间至少隔 40 毫秒（来不及就往后挪，不丢）。设置里关了就不震（platform 里管）
 const BUZZ_RANK = { light: 1, medium: 2, heavy: 3 }, BUZZ_GAP = 40;
 let buzzPending = null, buzzLast = -1e9, buzzTimer = false;
@@ -1920,6 +1921,18 @@ app.buzz = (kind) => {
   if (!buzzPending || BUZZ_RANK[kind] > BUZZ_RANK[buzzPending]) buzzPending = kind;
   if (!buzzTimer) { buzzTimer = true; setTimeout(buzzFlush, 0); }
 };
+// 一小串震动（规矩第 3 条「成了」用三下波浪；数独填满一行的光波也走这里）。steps = [[几毫秒后, 档], ...]，0 毫秒的当场震（和按下那下同一帧合成一下）。
+// 不叠串：新的一串一来，前一串还没震的全部作废（Cc：「当然不要太腻」）
+let buzzSeqTimers = [];
+app.buzzSeqAt = -1e9; // 最近一串开始的时刻（过场里的「咚」离它太近就不另震）
+app.buzzSeq = (steps) => {
+  buzzSeqTimers.forEach(clearTimeout);
+  buzzSeqTimers = [];
+  app.buzzSeqAt = P.now();
+  steps.forEach(([ms, kind]) => { if (ms <= 0) app.buzz(kind); else buzzSeqTimers.push(setTimeout(() => app.buzz(kind), ms)); });
+};
+// 「成了」的三下：每下隔 80 毫秒，一下比一下轻（或持平）
+app.buzzWin3 = (a, b, c) => app.buzzSeq([[0, a], [80, b], [160, c]]);
 app.toast = (msg, ms) => {
   app.toasts = [{ msg, t0: P.now(), dur: ms || 1800 }];
   app.animate((ms || 1800) + 50);
@@ -4311,15 +4324,17 @@ module.exports = function (app) {
       });
     });
     // 同一步撞在一起：只响一个声音、只震一次。优先级：通关 > 数字填完 > 行列宫
-    // 震动照《震动手感规矩 1.0》：填对本身是按下那一下 light。填满行 / 列 / 宫是规矩第 3 条的例外——波浪
+    // 震动照《震动手感规矩 1.1》：填对本身是按下那一下 light。填满行 / 列 / 宫是规矩第 3 条的例外——波浪
     // （Cc 11-24「像波浪一般的震动」，11-25「改回波浪」）：光每往外漫一圈（45 毫秒一圈）跟着轻震一下，最外一圈 medium。
     // 中心那一格不另震（按下那下就是起点）。两下之间 45 毫秒 > 40；和别的震动撞在同一刻时 app.buzz 合成一下。
-    // 数字填齐（digitBurst）没有光波、是一起闪：保持一下 medium。通关 heavy
+    // 数字填齐（digitBurst）没有光波、是一起闪：三下 medium·medium·light。通关三下 heavy·heavy·medium（规矩 1.1 第 3 条）
     if (r.units.length && !r.win && !r.digitDone) {
       later(220, () => app.sound('unit'));
       let far = 0;
       r.units.forEach((u) => S.UNITS[u].forEach((x) => { far = Math.max(far, Math.abs(S.ROW(x) - S.ROW(k)) + Math.abs(S.COL(x) - S.COL(k))); }));
-      for (let d = 1; d <= far; d++) later(220 + d * 45, () => app.buzz(d === far ? 'medium' : 'light'));
+      const steps = [];
+      for (let d = 1; d <= far; d++) steps.push([220 + d * 45, d === far ? 'medium' : 'light']);
+      app.buzzSeq(steps); // 走 buzzSeq：接着又成了一串（数字填齐、通关）时，这串没震完的让位，不叠
     }
     if (r.digitDone && !r.win) digitBurst(v, land);
     app.animate(1200);
@@ -4679,7 +4694,7 @@ module.exports = function (app) {
       cells.forEach((x) => sparkAt(x, full ? 3 : 2));
       if (full) fx.boardShake = { t0: t, dur: 6 * F, amp: 2 };
       app.sound('bell' + Math.min(8, b.digitCount));
-      app.buzz('medium'); // 9 个齐了：一下 medium（规矩：一个数字全填完 = 小成功）
+      app.buzzWin3('medium', 'medium', 'light'); // 9 个齐了 = 小成功：三下「嘣嘣嘣」（规矩 1.1 第 3 条）
     });
     fx.keyDone[v] = tS;
     app.animate(tEnd - P.now() + 100);
@@ -4752,7 +4767,7 @@ module.exports = function (app) {
     const head = b.mode === 'daily' ? '今日完成' : won ? '你赢了' : b.newBest && !firstTier ? '新纪录 ' + app.fmt(b.elapsed) : firstTier ? '首次通关 · ' + tn : '完成！';
     const WIN = C.CUT.win, F = 1000 / 60;
     party = { t0: t, last, full, head, sub: app.fmt(b.elapsed) + ' · ' + b.score + ' 分' };
-    app.buzz('heavy');
+    app.buzzWin3('heavy', 'heavy', 'medium'); // 过关 = 大成功：三下（第一下和按下的 light 同一帧，合成 heavy）
     const land = t + 150;
     if (full) {
       // 波浪：按「隔几格」算（切比雪夫距离），每圈 6 帧

@@ -702,6 +702,46 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     ok(gaps.length > 0 && gaps.every((g) => g >= 39.5), '波浪震动：每两下都隔够 40 毫秒（最短 ' + Math.round(Math.min.apply(null, gaps)) + ' 毫秒）');
   }
 
+  // ---------- 9h. 「成了」震三下（规矩 1.1 第 3 条，Cc：「三声波浪『嘣嘣嘣』……当然不要太腻」）：数字填齐、通关正好三下，一下比一下轻 ----------
+  {
+    await ev(() => { const s = window.__store.data; s.settings.vibrate = true; s.current = null; s.shelf = null; window.__app.overlays.length = 0; window.__app.startGame(0, { confirmed: true }); });
+    await page.waitForTimeout(900);
+    for (let i = 0; i < 8 && (await ev(() => !!(window.__app.testHooks.teach && window.__app.testHooks.teach()))); i++) await tap('teach-next', 150);
+    const b = await G.board();
+    const RANK = { light: 1, medium: 2, heavy: 3 };
+    const fill = async (k) => { await click(await G.cell(k), 30); await click(await G.pad(+b.sol[k]), 120); };
+    const empties = []; for (let k = 0; k < 81; k++) if (!b.vals[k]) empties.push(k);
+    // 挑一个还缺两格以上的数字：先填到只差一格，再填最后那格
+    let v = 0; for (let d = 1; d <= 9 && !v; d++) if (empties.filter((k) => +b.sol[k] === d).length >= 2) v = d;
+    const vCells = empties.filter((k) => +b.sol[k] === v), lastV = vCells.pop();
+    for (const k of vCells) await fill(k);
+    await click(await G.cell(lastV), 0); await page.waitForTimeout(1500);
+    await ev(() => { window.__app.buzzLog.length = 0; });
+    await click(await G.pad(v), 0);
+    await page.waitForTimeout(2600);
+    let L = await ev(() => window.__app.buzzLog.slice());
+    let tail = L.slice(1), gaps = tail.slice(1).map((x, i) => x.at - tail[i].at);
+    ok(L.length === 4 && L[0].kind === 'light' && tail.map((x) => x.kind).join(',') === 'medium,medium,light' && gaps.every((g) => g >= 70 && g <= 130),
+      '数字 ' + v + ' 填齐：按下 light，再震三下 ' + tail.map((x) => x.kind).join('·') + '，间隔 ' + gaps.map(Math.round).join('/') + ' 毫秒（约 80）');
+    // 通关：剩下的格子填到只差一格，最后一格填上 → 正好三下 heavy·heavy·medium（按下那下并进第一下）
+    const rest = empties.filter((k) => +b.sol[k] !== v), lastK = rest.pop();
+    for (const k of rest) await fill(k);
+    await click(await G.cell(lastK), 0); await page.waitForTimeout(2600);
+    await ev(() => { window.__app.buzzLog.length = 0; });
+    await click(await G.pad(+b.sol[lastK]), 0);
+    await page.waitForTimeout(900);
+    L = await ev(() => window.__app.buzzLog.slice());
+    gaps = L.slice(1).map((x, i) => x.at - L[i].at);
+    ok(L.length === 3 && L.map((x) => x.kind).join(',') === 'heavy,heavy,medium' && L.every((x, i) => !i || RANK[x.kind] <= RANK[L[i - 1].kind]) && gaps.every((g) => g >= 70 && g <= 130),
+      '通关：正好三下 ' + L.map((x) => x.kind).join('·') + '，间隔 ' + gaps.map(Math.round).join('/') + ' 毫秒，不和按下那下叠出第四下');
+    // 不叠串：一串没震完又来一串 → 前一串剩下的作废，总共最多三下
+    await page.waitForTimeout(400);
+    await ev(() => { window.__app.buzzLog.length = 0; const a = window.__app; a.buzzWin3('medium', 'medium', 'light'); setTimeout(() => a.buzzWin3('heavy', 'heavy', 'medium'), 40); });
+    await page.waitForTimeout(500);
+    L = await ev(() => window.__app.buzzLog.slice());
+    ok(L.length === 4 && L.slice(1).map((x) => x.kind).join(',') === 'heavy,heavy,medium', '不叠串：第一串震了一下就被第二串顶掉，共 ' + L.length + ' 下（' + L.map((x) => x.kind).join('·') + '）');
+  }
+
   // ---------- 10. 没有报错 ----------
   ok(errors.length === 0, '没有报错' + (errors.length ? '：' + errors.slice(0, 3).join(' | ') : ''));
   console.log('\n' + pass + ' 项通过，' + fail + ' 项没过');

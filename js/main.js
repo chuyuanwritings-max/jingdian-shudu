@@ -38,7 +38,7 @@ ui.setTexture((ctx, x, y, w, h) => Paper.fill(ctx, app.th.cardTexture, app.dpr, 
 app.redraw = () => { app.dirty = true; };
 app.animate = (ms) => { app.animUntil = Math.max(app.animUntil, P.now() + ms); };
 app.sound = (name, vol) => { if (store.data.settings.sound) P.sound(name, vol); };
-// 震动（共用《震动手感规矩 1.0》）：每次有效点击 light，小成功 medium，犯错 / 过关 heavy。
+// 震动（共用《震动手感规矩 1.1》）：每次有效点击 light；成了震三下（数字填齐 medium·medium·light，通关 heavy·heavy·medium）；犯错一下 heavy。
 // 同一帧里撞在一起的只震最重的一下；两次之间至少隔 40 毫秒（来不及就往后挪，不丢）。设置里关了就不震（platform 里管）
 const BUZZ_RANK = { light: 1, medium: 2, heavy: 3 }, BUZZ_GAP = 40;
 let buzzPending = null, buzzLast = -1e9, buzzTimer = false;
@@ -57,6 +57,18 @@ app.buzz = (kind) => {
   if (!buzzPending || BUZZ_RANK[kind] > BUZZ_RANK[buzzPending]) buzzPending = kind;
   if (!buzzTimer) { buzzTimer = true; setTimeout(buzzFlush, 0); }
 };
+// 一小串震动（规矩第 3 条「成了」用三下波浪；数独填满一行的光波也走这里）。steps = [[几毫秒后, 档], ...]，0 毫秒的当场震（和按下那下同一帧合成一下）。
+// 不叠串：新的一串一来，前一串还没震的全部作废（Cc：「当然不要太腻」）
+let buzzSeqTimers = [];
+app.buzzSeqAt = -1e9; // 最近一串开始的时刻（过场里的「咚」离它太近就不另震）
+app.buzzSeq = (steps) => {
+  buzzSeqTimers.forEach(clearTimeout);
+  buzzSeqTimers = [];
+  app.buzzSeqAt = P.now();
+  steps.forEach(([ms, kind]) => { if (ms <= 0) app.buzz(kind); else buzzSeqTimers.push(setTimeout(() => app.buzz(kind), ms)); });
+};
+// 「成了」的三下：每下隔 80 毫秒，一下比一下轻（或持平）
+app.buzzWin3 = (a, b, c) => app.buzzSeq([[0, a], [80, b], [160, c]]);
 app.toast = (msg, ms) => {
   app.toasts = [{ msg, t0: P.now(), dur: ms || 1800 }];
   app.animate((ms || 1800) + 50);

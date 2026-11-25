@@ -94,7 +94,8 @@ module.exports = function (app) {
     const cs = createCutscene({
       ctx: app.ctx, width: app.W, height: app.H, images, timeline: tame(timeline), short,
       onSfx: (name) => {
-        if (name === 'dong' || name === 'lamp') app.buzz('heavy');
+        // 咚 / 灯：heavy。但离刚才那串「成了」不到 0.6 秒（短版通关第二段紧跟在三下后面）就不另震，免得连成四下（规矩 1.1：一串最多三下）
+        if ((name === 'dong' || name === 'lamp') && P.now() - app.buzzSeqAt > 600) app.buzz('heavy');
         app.sound(name, name === 'hum' ? 0.35 : undefined);
       },
       onEnd: () => setTimeout(finish, 0),
