@@ -168,11 +168,15 @@ module.exports = function (app) {
       });
     });
     // 同一步撞在一起：只响一个声音、只震一次。优先级：通关 > 数字填完 > 行列宫
-    // 震动照《震动手感规矩 1.0》：填对本身是按下那一下 light；填满行 / 列 / 宫在光波出发时只震一下 medium
-    // （规矩 3：连消只震一次，不一串连震；原来跟着光波每格一下轻的）。数字填齐在 digitBurst 里 medium，通关 heavy
+    // 震动照《震动手感规矩 1.0》：填对本身是按下那一下 light。填满行 / 列 / 宫是规矩第 3 条的例外——波浪
+    // （Cc 11-24「像波浪一般的震动」，11-25「改回波浪」）：光每往外漫一圈（45 毫秒一圈）跟着轻震一下，最外一圈 medium。
+    // 中心那一格不另震（按下那下就是起点）。两下之间 45 毫秒 > 40；和别的震动撞在同一刻时 app.buzz 合成一下。
+    // 数字填齐（digitBurst）没有光波、是一起闪：保持一下 medium。通关 heavy
     if (r.units.length && !r.win && !r.digitDone) {
       later(220, () => app.sound('unit'));
-      later(220, () => app.buzz('medium'));
+      let far = 0;
+      r.units.forEach((u) => S.UNITS[u].forEach((x) => { far = Math.max(far, Math.abs(S.ROW(x) - S.ROW(k)) + Math.abs(S.COL(x) - S.COL(k))); }));
+      for (let d = 1; d <= far; d++) later(220 + d * 45, () => app.buzz(d === far ? 'medium' : 'light'));
     }
     if (r.digitDone && !r.win) digitBurst(v, land);
     app.animate(1200);

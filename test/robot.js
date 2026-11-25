@@ -664,6 +664,44 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     await ev(() => { window.__store.data.settings.vibrate = true; });
   }
 
+  // ---------- 9g. 填满一行：震动跟着光波走（Cc：「改回波浪」）——震的次数 = 光波往外漫的圈数，每两下隔够 40 毫秒 ----------
+  {
+    await ev(() => { const s = window.__store.data; s.settings.vibrate = true; s.current = null; s.shelf = null; window.__app.overlays.length = 0; window.__app.startGame(0, { confirmed: true }); });
+    await page.waitForTimeout(900);
+    for (let i = 0; i < 8 && (await ev(() => !!(window.__app.testHooks.teach && window.__app.testHooks.teach()))); i++) await tap('teach-next', 150);
+    const b = await G.board();
+    // 挑一行：把它填到只剩最后一格；最后一格填上时不能正好凑齐某个数（那样走「数字填齐」的效果）、也不能赢
+    const vals = b.vals.slice(), cnt = (v) => vals.filter((x, i) => x === v && x === +b.sol[i]).length;
+    let row = -1, last = -1;
+    for (let r = 0; r < 9 && row < 0; r++) {
+      const blanks = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((c) => r * 9 + c).filter((k) => !vals[k]);
+      if (blanks.length < 2) continue;
+      const k = blanks[blanks.length - 1], v = +b.sol[k];
+      const after = cnt(v) + blanks.filter((x) => +b.sol[x] === v).length;
+      if (after < 9) { row = r; last = k; }
+    }
+    for (let c = 0; c < 9; c++) { const k = row * 9 + c; if (!vals[k] && k !== last) { await click(await G.cell(k), 30); await click(await G.pad(+b.sol[k]), 120); vals[k] = +b.sol[k]; } }
+    await page.waitForTimeout(1300);
+    // 最后一格填上以后凑齐了哪些行 / 列 / 宫，光波最远漫几圈
+    const full = vals.slice(); full[last] = +b.sol[last];
+    const R = (k) => Math.floor(k / 9), Cc = (k) => k % 9, Bx = (k) => Math.floor(R(k) / 3) * 3 + Math.floor(Cc(k) / 3);
+    const units = [[...Array(81).keys()].filter((x) => R(x) === R(last)), [...Array(81).keys()].filter((x) => Cc(x) === Cc(last)), [...Array(81).keys()].filter((x) => Bx(x) === Bx(last))]
+      .filter((u) => u.every((x) => full[x] && full[x] === +b.sol[x]));
+    let far = 0; units.forEach((u) => u.forEach((x) => { far = Math.max(far, Math.abs(R(x) - R(last)) + Math.abs(Cc(x) - Cc(last))); }));
+    await ev(() => { window.__app.buzzLog.length = 0; });
+    await click(await G.cell(last), 0);
+    await page.waitForTimeout(150);
+    await ev(() => { window.__app.buzzLog.length = 0; }); // 选格那下不算
+    await click(await G.pad(+b.sol[last]), 0);
+    await page.waitForTimeout(1200);
+    const L = await ev(() => window.__app.buzzLog.slice());
+    const wave = L.slice(1); // 第一下是按下的 light（光波的中心）
+    const gaps = L.slice(1).map((x, i) => x.at - L[i].at);
+    ok(far > 0 && wave.length === far && wave[wave.length - 1].kind === 'medium' && wave.slice(0, -1).every((x) => x.kind === 'light'),
+      '填满一行：光波漫 ' + far + ' 圈，震了 ' + wave.length + ' 下（轻……轻、最外一圈中）');
+    ok(gaps.length > 0 && gaps.every((g) => g >= 39.5), '波浪震动：每两下都隔够 40 毫秒（最短 ' + Math.round(Math.min.apply(null, gaps)) + ' 毫秒）');
+  }
+
   // ---------- 10. 没有报错 ----------
   ok(errors.length === 0, '没有报错' + (errors.length ? '：' + errors.slice(0, 3).join(' | ') : ''));
   console.log('\n' + pass + ' 项通过，' + fail + ' 项没过');
