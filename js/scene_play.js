@@ -107,18 +107,21 @@ module.exports = function (app) {
   function select(k) {
     if (paused || winAt) return;
     b.selected = k;
+    if (k >= 0) app.buzz('light'); // 选格是一次有效输入：轻轻一下（棋盘的点按区是 silent，在这里自己震）
     // 点到一个有数的格子：高亮跟着换成这个数；点空格子保留原来亮着的数
     if (k >= 0 && b.vals[k]) selDigit = b.vals[k];
     app.sound('select', 0.4);
   }
   function press(v) {
-    if (paused || winAt || b.lost) return;
+    if (paused || winAt || b.lost) return; // 没成的点击不震
     idleAt = P.now();
     const k = b.selected;
     // 点数字键：盘上所有这个数、笔记里有这个数的格子都亮黄（学 Sudoku 2）。没选格子时只亮、不填
     selDigit = v;
     app.animate(150);
-    if (k < 0 || Board.locked(b, k)) { app.sound('select', 0.4); return; }
+    if (k < 0) { app.sound('select', 0.4); app.buzz('light'); return; } // 没选格：只亮这个数，也算一次有效点
+    if (Board.locked(b, k)) { fx.shake = { k, t0: P.now() }; app.animate(350); app.sound('select', 0.4); return; } // 这格已经定了：只晃不震
+    app.buzz('light'); // 填数、记笔记：和 iPhone 打字一样轻轻一下（填错、通关在后面同一帧升成 heavy）
     const r = Board.input(b, k, v, noteMode, store.data.settings);
     const t = P.now();
     // 记完一个笔记就放开这一格：再点别的数字只是看看它在哪、还剩几个，不会又记进去
@@ -165,14 +168,11 @@ module.exports = function (app) {
       });
     });
     // 同一步撞在一起：只响一个声音、只震一次。优先级：通关 > 数字填完 > 行列宫
-    // 震动（Cc：「随着那个特效延伸出去的，像波浪一般的震动」）：方块落地「咚」一下；填满行列宫时，
-    // 光每往外跳一格震一下轻的，跟着波浪走到头。微信里 iPhone 才震得到（网页版 iPhone 浏览器不给震动）
-    later(150, () => app.buzz('medium'));
+    // 震动照《震动手感规矩 1.0》：填对本身是按下那一下 light；填满行 / 列 / 宫在光波出发时只震一下 medium
+    // （规矩 3：连消只震一次，不一串连震；原来跟着光波每格一下轻的）。数字填齐在 digitBurst 里 medium，通关 heavy
     if (r.units.length && !r.win && !r.digitDone) {
       later(220, () => app.sound('unit'));
-      let far = 0;
-      r.units.forEach((u) => S.UNITS[u].forEach((x) => { far = Math.max(far, Math.abs(S.ROW(x) - S.ROW(k)) + Math.abs(S.COL(x) - S.COL(k))); }));
-      for (let d = 1; d <= far; d++) later(220 + d * 45, () => app.buzz(d === far ? 'medium' : 'light'));
+      later(220, () => app.buzz('medium'));
     }
     if (r.digitDone && !r.win) digitBurst(v, land);
     app.animate(1200);
@@ -532,8 +532,7 @@ module.exports = function (app) {
       cells.forEach((x) => sparkAt(x, full ? 3 : 2));
       if (full) fx.boardShake = { t0: t, dur: 6 * F, amp: 2 };
       app.sound('bell' + Math.min(8, b.digitCount));
-      app.buzz('heavy'); // 9 个齐了：重重一下，再两下轻的余震
-      later(70, () => app.buzz('light')); later(140, () => app.buzz('light'));
+      app.buzz('medium'); // 9 个齐了：一下 medium（规矩：一个数字全填完 = 小成功）
     });
     fx.keyDone[v] = tS;
     app.animate(tEnd - P.now() + 100);
@@ -908,7 +907,7 @@ module.exports = function (app) {
       const x = px + (v - 1) * keyW;
       const left = opts.counts ? 9 - opts.counts[v] : null;
       const done = left === 0;
-      const on = ui.button({ id: 'key-' + v, x, y: opts.y, w: keyW, h: opts.h, silent: done, onDown: done || opts.disabled ? null : () => opts.onPress(v) });
+      const on = ui.button({ id: 'key-' + v, x, y: opts.y, w: keyW, h: opts.h, silent: done || opts.selfBuzz, onDown: done || opts.disabled ? null : () => opts.onPress(v) }); // selfBuzz：局内自己判断成没成再震
       if (opts.highlight === v) {
         ctx.globalAlpha = 0.5 + 0.5 * Math.sin(app.now / 220);
         ui.fillRR(ctx, x + 2, opts.y + 2, keyW - 4, opts.h - 4, 12, th.soft);
@@ -1082,7 +1081,7 @@ module.exports = function (app) {
         { id: 'hint', label: '提示', icon: 'bulb', badge: hintBadge, onTap: () => tool('hint') },
         { id: 'note', label: '笔记', icon: 'pencil', active: noteMode, badge: { text: noteMode ? '开' : '关', color: noteMode ? th.primary : th.faint }, onTap: () => tool('note') },
       ].filter((it) => !(b.guided && it.id === 'note')), L.toolsX, b.guided ? L.toolsW / 2 : L.toolsW); // 带练第一局用不上笔记：先不摆（一次只给一样）
-      app.drawPad(ctx, { x: L.padX, w: L.padW, y: L.padY, h: L.padH, onPress: press, counts: Board.counts(b), noteMode, doneAt: fx.keyDone, active: selDigit });
+      app.drawPad(ctx, { x: L.padX, w: L.padW, y: L.padY, h: L.padH, onPress: press, selfBuzz: true, counts: Board.counts(b), noteMode, doneAt: fx.keyDone, active: selDigit });
       // 讲解时挡住棋盘和按键，只能点气泡里的「下一步」
       if (teach && !paused) ui.button({ id: 'teach-block', x: 0, y: L.infoY, w: app.W, h: app.H - L.infoY, silent: true });
       const tk = talk(t);

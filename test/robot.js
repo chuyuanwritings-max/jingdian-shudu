@@ -618,6 +618,52 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     ok(!realMain || realMain.y !== cur.y - 100, '测试用的布局没写进真文件');
   }
 
+  // ---------- 9f. 震动（《震动手感规矩 1.0》）：有效操作都震、没成的不震、两次至少隔 40 毫秒 ----------
+  {
+    await ev(() => { const s = window.__store.data; s.settings.vibrate = true; s.current = null; s.shelf = null; s.seen.demo = Object.assign({}, s.seen.demo, { hidden: 1, rules: 1, naked: 1 }); window.__app.overlays.length = 0; window.__app.startGame(0, { confirmed: true }); });
+    await page.waitForTimeout(900);
+    for (let i = 0; i < 8 && (await ev(() => !!(window.__app.testHooks.teach && window.__app.testHooks.teach()))); i++) await tap('teach-next', 150);
+    let b = await G.board();
+    const empties = []; for (let k = 0; k < 81; k++) if (!b.vals[k]) empties.push(k);
+    const given = b.vals.findIndex((x) => x);
+    const log = () => ev(() => window.__app.buzzLog.slice());
+    const reset = () => ev(() => { window.__app.buzzLog.length = 0; });
+    const wait = () => page.waitForTimeout(120);
+    await reset(); await click(await G.cell(empties[0]), 0); await wait();
+    let L1 = await log(); ok(L1.length === 1 && L1[0].kind === 'light', '震动：选一格 → light');
+    await reset(); await click(await G.pad(+b.sol[empties[0]]), 0); await page.waitForTimeout(500);
+    L1 = await log(); ok(L1.length >= 1 && L1[0].kind === 'light' && !L1.some((x) => x.kind === 'heavy'), '震动：填对 → light（' + L1.map((x) => x.kind).join(',') + '）');
+    await reset(); await click(await G.cell(given), 0); await wait(); await reset();
+    await click(await G.pad(((b.vals[given]) % 9) + 1), 0); await wait();
+    ok((await log()).length === 0, '震动：在题目给的格子上按数字（填不进去）→ 不震');
+    await click(await G.cell(empties[1]), 0); await wait(); await reset();
+    await click(await G.pad((+b.sol[empties[1]] % 9) + 1), 0); await wait();
+    L1 = await log(); ok(L1.length === 1 && L1[0].kind === 'heavy', '震动：填错 → 只震一下 heavy（按下的 light 并进去）');
+    await page.waitForTimeout(2200);
+    await click(await G.tool(1), 0); await click(await G.cell(empties[2]), 0); await reset();
+    await click(await G.pad(1), 0); await wait();
+    L1 = await log(); ok(L1.length === 1 && L1[0].kind === 'light', '震动：记笔记 → light');
+    await click(await G.tool(1), 0);
+    // 连着快点 6 下（每下 60 毫秒，比真人还快）：一下一下分开，每下都震，两次之间都隔够 40 毫秒
+    await reset();
+    for (let i = 3; i < 9; i++) await click(await G.cell(empties[i]), 60);
+    await page.waitForTimeout(400);
+    L1 = await log();
+    const gaps = L1.slice(1).map((x, i) => x.at - L1[i].at);
+    ok(L1.length === 6 && gaps.every((g) => g >= 39.5), '震动：快点 6 下震了 ' + L1.length + ' 下，最短间隔 ' + Math.round(Math.min.apply(null, gaps)) + ' 毫秒（≥ 40）');
+    // 同一刻撞在一起（轻 + 中 + 轻）：只震最重的一下；紧跟着再来一下：往后挪到 40 毫秒以后
+    await reset();
+    await ev(() => { const a = window.__app; a.buzz('light'); a.buzz('medium'); a.buzz('light'); setTimeout(() => a.buzz('light'), 5); });
+    await page.waitForTimeout(200);
+    L1 = await log();
+    ok(L1.length === 2 && L1[0].kind === 'medium' && L1[1].at - L1[0].at >= 39.5, '震动：同一刻轻中轻只震一下 medium，5 毫秒后那下挪到 ' + (L1[1] ? Math.round(L1[1].at - L1[0].at) : '?') + ' 毫秒后');
+    // 关掉震动：一下都不记
+    await ev(() => { window.__store.data.settings.vibrate = false; });
+    await reset(); await click(await G.cell(empties[10]), 0); await wait();
+    ok((await log()).length === 0, '设置里关了震动 → 不震');
+    await ev(() => { window.__store.data.settings.vibrate = true; });
+  }
+
   // ---------- 10. 没有报错 ----------
   ok(errors.length === 0, '没有报错' + (errors.length ? '：' + errors.slice(0, 3).join(' | ') : ''));
   console.log('\n' + pass + ' 项通过，' + fail + ' 项没过');

@@ -38,7 +38,25 @@ ui.setTexture((ctx, x, y, w, h) => Paper.fill(ctx, app.th.cardTexture, app.dpr, 
 app.redraw = () => { app.dirty = true; };
 app.animate = (ms) => { app.animUntil = Math.max(app.animUntil, P.now() + ms); };
 app.sound = (name, vol) => { if (store.data.settings.sound) P.sound(name, vol); };
-app.buzz = (kind) => P.vibrate(kind);
+// 震动（共用《震动手感规矩 1.0》）：每次有效点击 light，小成功 medium，犯错 / 过关 heavy。
+// 同一帧里撞在一起的只震最重的一下；两次之间至少隔 40 毫秒（来不及就往后挪，不丢）。设置里关了就不震（platform 里管）
+const BUZZ_RANK = { light: 1, medium: 2, heavy: 3 }, BUZZ_GAP = 40;
+let buzzPending = null, buzzLast = -1e9, buzzTimer = false;
+app.buzzLog = []; // 机器人测试读：真震出去的每一下 { kind, at }
+function buzzFlush() {
+  buzzTimer = false;
+  if (!buzzPending) return;
+  const now = P.now(), wait = buzzLast + BUZZ_GAP - now;
+  if (wait > 0) { buzzTimer = true; setTimeout(buzzFlush, Math.ceil(wait)); return; }
+  const kind = buzzPending;
+  buzzPending = null; buzzLast = now;
+  P.vibrate(kind);
+  if (store.data.settings.vibrate !== false) { app.buzzLog.push({ kind, at: now }); if (app.buzzLog.length > 300) app.buzzLog.shift(); }
+}
+app.buzz = (kind) => {
+  if (!buzzPending || BUZZ_RANK[kind] > BUZZ_RANK[buzzPending]) buzzPending = kind;
+  if (!buzzTimer) { buzzTimer = true; setTimeout(buzzFlush, 0); }
+};
 app.toast = (msg, ms) => {
   app.toasts = [{ msg, t0: P.now(), dur: ms || 1800 }];
   app.animate((ms || 1800) + 50);

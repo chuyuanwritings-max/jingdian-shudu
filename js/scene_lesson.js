@@ -78,9 +78,9 @@ module.exports = function (app) {
     const t = P.now();
     if (kind === 'cell') {
       lesson.sel = val;
-      if (exp.cell === val) { lesson.ai++; app.sound('select', 0.4); }
+      if (exp.cell === val) { lesson.ai++; app.sound('select', 0.4); app.buzz('light'); }
       else if (exp.cell !== undefined) miss(val);
-      else app.sound('select', 0.4); // 这一步不在等格子，点了也只是选中
+      else if (val >= 0) { app.sound('select', 0.4); app.buzz('light'); } // 这一步不在等格子，点了也只是选中
     } else if (kind === 'num') {
       if (exp.num === val && lesson.sel >= 0) {
         const k = lesson.sel;
